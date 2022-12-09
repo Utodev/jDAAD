@@ -1,0 +1,72 @@
+html {
+		
+}
+
+body {
+	font-family: GraublauWeb, Verdana, arial, helvetica;
+	background-image: url("background.png");
+	background-repeat: no-repeat;
+	background-size: cover;
+	color: #14143d;
+}
+
+
+a {
+	color: cornflowerblue;
+	text-decoration: none;
+}
+
+a:visited {
+	color: cornflowerblue;
+	text-decoration: none;
+}
+
+a:hover {
+	color: cornflowerblue;
+	text-decoration: underline;
+}
+
+
+.screenClass /* the whole screen */
+{
+	padding: 40px; /* BORDER effect */
+	width: 640px;
+	height: 480px;  /* 640x480 plus 40px margin */
+	margin-right: auto;
+	margin-left: auto;
+	margin-top:40px;
+	top: 0;
+	background-color: black;
+}
+
+.paperClass { /* the PAPER area */
+	width: 100%;
+	height: 100%; /* Expand the canvas so we always work in 320x200 but the canvas expands to fill the PAPER size */
+	background-color: black;
+}
+
+
+.goodbye {
+	position:absolute;
+	left: 0;
+	top:0;
+	bottom:0;
+	right:0;
+	background-color: black;
+	font-size: medium;
+	padding: 20px;
+	color: whitesmoke;
+	z-index: 4000;
+	display: none;
+}
+
+#imageBuffer 
+{
+	position:absolute;
+	left: 0;
+	top:0;
+	bottom:0;
+	right:0;
+	display:none;
+	z-index: -1;
+}
