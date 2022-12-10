@@ -10,10 +10,11 @@ TO-DO:
 - XMES
 - Hacer que un click en pantalla se convierta a la pulsación de una tecla, o al menos
  que te saque del anykey.
+ - Revisar pulsaciones de teclas que salen símbolos raros
+ - Hacer que el build script de HTML de D-R convierte el font CHR en el font.js sobre la marcha
 
 CHECKS:
-
- - Mira a ver si el build script de HTML de D-R convierte el font en el font.js
+ 
  - Chequea el PARSE 1 a ver si va
  - Comprobar contenedores y prendas
  - CHECK DE AUTOP/AUTOT con DOALL
@@ -2402,41 +2403,39 @@ function _DPRINT()
 /*--------------------------------------------------------------------------------------*/
 function _DISPLAY() 
 {
-/*    var windowX = windows.windows[windows.activeWindow].col * COLUMN_WIDTH;
+    done = true;
+    condactResult = true;
+    if (imageBufferID === false) return;
+
+
+    var image = images[imageBufferID];
+    var imageWidth = image[image.length - 2];
+    var imageHeight = image[image.length - 1];
+
+
+    var windowX = windows.windows[windows.activeWindow].col * COLUMN_WIDTH;
     var windowY = windows.windows[windows.activeWindow].line * LINE_HEIGHT;
     var windowWidth = windows.windows[windows.activeWindow].width * COLUMN_WIDTH;
     if ((windowWidth==318) || (windowWidth==319)) windowWidth=320;
     var windowHeight = windows.windows[windows.activeWindow].height* LINE_HEIGHT;
 
     
-    var imageWidth = imageBufferID.naturalWidth;
-    var imageHeight = imageBufferID.naturalHeight;
-
     
-
-    if (windowHeight>imageHeight) windowHeight = imageHeight;
-    if (windowWidth>imageWidth) windowWidth  = imageWidth;
-
-    var imageBufferID2 = new Image();
-    imageBufferID2.width = windowWidth;
-    imageBufferID2.height  =windowHeight;
-*/
-    if (imageBufferID === false) return;
-    
-    var image = images[imageBufferID];
-    var imageWidth = image[image.length - 2];
-    var imageHeight = image[image.length - 1];
     for (y=0;y<imageHeight;y++)
         for(x=0;x<imageWidth;x++)
          {          
-            var data = image[imageWidth*y + x];
-            var r = (data >> 16) & 0xFF;
-            var g = (data >> 8) & 0xFF;
-            var b = data & 0xFF;
+            if ((x<windowWidth) && (y<windowHeight)) // clip image
+            {
+                var data = image[imageWidth*y + x];
+                var r = (data >> 16) & 0xFF;
+                var g = (data >> 8) & 0xFF;
+                var b = data & 0xFF;
 
-            pixelRGB(x, y, r, g, b);
+                pixelRGB(windowX+ x, windowY + y, r, g, b);
+            }
+                        
          }
-    done = true;
+    
 }
 
 function _CLS() 
