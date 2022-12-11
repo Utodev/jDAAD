@@ -2,27 +2,23 @@
 
 TO-DO:
 
-- Timeouts en input
-- La secuencia de escape #k (pulsar tecla). Si no se puede hacer que el compilador 
-  de error si aparece al compilar par HTML
-- XPART
-- EXTERN
-- XMES
-- Hacer que un click en pantalla se convierta a la pulsación de una tecla, o al menos
- que te saque del anykey.
- - Revisar pulsaciones de teclas que salen símbolos raros
- - Hacer que el build script de HTML de D-R convierte el font CHR en el font.js sobre la marcha
+- Timeouts in player input
+- More when too much text printed
+- Escape sequence '#k'. Note: if no doable, make the compiler stop with an error when target is html
+- Make HTML.BAT build script get 6x8.CHR font and convert to font.js, so it's editable like the others
 
-CHECKS:
+PENDING CHECKS:
  
- - Chequea el PARSE 1 a ver si va
- - Comprobar contenedores y prendas
- - CHECK DE AUTOP/AUTOT con DOALL
- - Chequea el getObjectFullWeight porque podría dar stack overflow
+ - Check if PARSE 1 works
+ - Check containers and wearables
+ - Check AUTOP/AUTOT with DOALL
+ - Chequea getObjectFullWeight because in unclear circumstances it produced a stack overflow due to 
+   endless loop
 
-Known bugs
-==========
-- Beep no pude sonar hasta que no hay una interacción del jugador 
+KNOW BUGS (or features):
+
+- Beep can't sound until player has either clicked or pressed a key. It's a limitation of javascript
+  so it can't be solved.
 
 */
 
@@ -527,9 +523,29 @@ class DDBClass {
         return DDBDATA[address];
     }
 
+    setByte(address, value)
+    {
+        if (address > 0xFFFE) return 0
+        DDBDATA[address] = value;
+    }
+
+
     getWord(address)
     {
         return this.getByte(address) + 256 * this.getByte(address + 1);
+    }
+
+    getBlock(address, length)
+    {
+        var result = [];
+        for (i=0;i<length;i++) result.push(this.getByte(address+i));
+        return result;
+    }
+
+
+    setBlock(address, data)
+    {
+        for (i=0;i<data.length;i++) this.setByte(address + i, data[i]);
     }
 
 
@@ -834,6 +850,7 @@ class stackClass {
 
 // global vars
 
+
 var inputBuffer = '';
 var imageBufferID = false;
 var flags = new flagClass();
@@ -848,9 +865,11 @@ var playerOrderQuoted = '';
 var playerOrder = '';
 var conjunctions = [] ;
 var globalParseOption = 0; // preseves the option given to PARSE calls (PARSE 1 or PARSE 2), so when the run() loops is broken and handler takes control, it can call back with the proper option
+var XmessagePart = 0;
 
 var keyBoardStatus = [];
 var keyBoardStatusShiftKeys = 0;
+var keyPressTreated = 0;
 
 // Global var for the ReadText functions
 var ticks = 0;
@@ -865,6 +884,7 @@ var inputTakenFromPlayer = false;
 // GLobal Vars por QUIT/END
 var YesResponse = '';
 var PreserveTimeout = 0;
+
 
 
 var condactResult = false;
@@ -1043,6 +1063,7 @@ String.prototype.hexEncode = function(){
 
     return result
 }
+
 
 function initializeParser()
 {
@@ -1555,6 +1576,7 @@ function setShiftKeys(e)
 
 function keyupHandler(e)
 {
+    console.log('D:' + String.fromCharCode(e.keyCode) +'(' + e.keyCode +')');
     //Save keyup status for each key to be used with INKEY
     if (keyBoardStatus.includes(e.keyCode)) 
         keyBoardStatus.splice(keyBoardStatus.indexOf(e.keyCode))
@@ -1582,8 +1604,23 @@ function clickHandler(e)
     }
 }
 
+
+function keypressHandler(e)
+{
+    console.log('K:' + String.fromCharCode(e.charCode) +'(' + e.charCode +')');
+    if (inQUIT || inEND || inSAVE || inLOAD || inPARSE)
+    {
+        // If keyDown didn't handle it
+        if (!keyPressTreated) readTextB(e.charCode);
+    }
+}
+
 function keydownHandler(e)
 {
+    console.log('D:' + String.fromCharCode(e.keyCode) +'(' + e.keyCode +')');
+
+    keyPressTreated = false;
+
     //Save keydown status for each key to be used with INKEY    
     if (!keyBoardStatus.includes(e.keyCode)) 
         keyBoardStatus.push(e.keyCode); 
@@ -1592,8 +1629,14 @@ function keydownHandler(e)
     if (inQUIT || inEND || inSAVE || inLOAD || inPARSE)
     {
         if (checkSpecialKeyCodes(e.keyCode, e.ctrlKey)) return true; 
-        e.preventDefault();
-        readTextB(e.keyCode);
+        
+        //if it's not standard ascii letter try to process the code
+        if (e.keyCode < 32)
+        {
+            keyPressTreated = true;
+            readTextB(e.keyCode);
+        } 
+            
     }
 
     if (inANYKEY)
@@ -1606,8 +1649,17 @@ function keydownHandler(e)
     }
 }
 
-function Extern(a, b) //FALTA
+function Extern(a, b)
 {
+    if (externHandlers[b] === null) // Extern hasn't been loaded
+    {
+        var script = document.createElement("script");
+        script.setAttribute("type", "text/javascript");
+        script.setAttribute("src", 'extern' + b + '.js');
+        document.getElementsByTagName("head")[0].appendChild(script);
+    }
+    var callFunction = externHandlers[b];
+    callFunction(a);
 }
 
 
@@ -1804,55 +1856,34 @@ function writeText(aText, doDebug=true)
     writeWord(aWord);
 }
 
-function PatchStr(str)
+function PatchStr(Str)
 {
-     finalStr ='';
-     for(var i=0;i<str.length;i++)
-     switch(str.charAt(i))
-     {
-       case '┬ª': finalStr+= String.fromCharCode(16);break;
-       case '┬¡': finalStr+= String.fromCharCode(17);break;
-       case '┬¿': finalStr+= String.fromCharCode(18);break;
-       case '┬«': finalStr+= String.fromCharCode(19);break;
-       case '┬»': finalStr+= String.fromCharCode(20);break;
-       case '┬á': finalStr+= String.fromCharCode(21);break;
-       case 'ΓÇÜ': finalStr+= String.fromCharCode(22);break;
-       case '┬í': finalStr+= String.fromCharCode(23);break;
-       case '┬ó': finalStr+= String.fromCharCode(24);break;
-       case '┬ú': finalStr+= String.fromCharCode(25);break;
-       case '┬ñ': finalStr+= String.fromCharCode(26);break;
-       case '┬Ñ': finalStr+= String.fromCharCode(27);break;
-       case 'ΓÇí': finalStr+= String.fromCharCode(28);break;
-       case 'Γé¼': finalStr+= String.fromCharCode(29);break;
-       case '∩┐╜': finalStr+= String.fromCharCode(30);break;
-       case '∩┐╜': finalStr+= String.fromCharCode(31);break;
-       // New characters
-       case 'ΓÇª': finalStr+=  String.fromCharCode(0x0e,16,0x0f);break;
-       case String.fromCharCode(198): finalStr+=  String.fromCharCode(0x0e,17,0x0f);break; //Portuguese a with curly tilde' in codepage 850
-       case 'ΓÇ₧': finalStr+= String.fromCharCode(0x0e,18,0x0f);break;
-       case '╞Æ': finalStr+= String.fromCharCode(0x0e,19,0x0f);break;
-    
-       case '┼á': finalStr+= String.fromCharCode(0x0e,20,0x0f);break;
-       case 'ΓÇ░': finalStr+= String.fromCharCode(0x0e,21,0x0f);break;
-       case '╦å': finalStr+= String.fromCharCode( 0x0e,22,0x0f);break;
-    
-       case '∩┐╜': finalStr+= String.fromCharCode( 0x0e,23,0x0f);break;
-       case 'ΓÇ╣': finalStr+= String.fromCharCode( 0x0e,24,0x0f);break;
-       case '┼Æ': finalStr+= String.fromCharCode( 0x0e,25,0x0f);break;
-    
-       case 'ΓÇó': finalStr+= String.fromCharCode(0x0e,26,0x0f);break;
-       case String.fromCharCode(229): finalStr+= String.fromCharCode( 0x0e,27,0x0f);break; //Portuguese o with curly tilde' in codepage 850
-       case 'ΓÇ¥': finalStr+= String.fromCharCode( 0x0e,28,0x0f);break;
-       case 'ΓÇ£': finalStr+= String.fromCharCode( 0x0e,29,0x0f);break;
-    
-       case 'ΓÇö': finalStr+= String.fromCharCode( 0x0e,30,0x0f);break;
-       case 'ΓÇô': finalStr+= String.fromCharCode( 0x0e,31,0x0f);break;
-        
-       case String.fromCharCode(225): finalStr+= String.fromCharCode(0x0e,35,0x0f);break; //German '├í', eszett in codepage 850 and 437 rather than eszett letter
-       default: finalStr+= str.charAt(i);
-     }
-     return finalStr;
-}
+ var finalStr ='';
+ for (i=0;i<Str.length;i++)
+ switch(Str.charAt(i))
+ {
+   // Original DAAD characters 
+   case 'ª': finalStr = finalStr + String.fromCharCode(16); break;
+   case '¡': finalStr = finalStr + String.fromCharCode(17); break;
+   case '¿': finalStr = finalStr + String.fromCharCode(18); break;
+   case '«': finalStr = finalStr + String.fromCharCode(19); break;
+   case '»': finalStr = finalStr + String.fromCharCode(20); break;
+   case 'á': finalStr = finalStr + String.fromCharCode(21); break;
+   case 'é': finalStr = finalStr + String.fromCharCode(22); break;
+   case 'í': finalStr = finalStr + String.fromCharCode(23); break;
+   case 'ó': finalStr = finalStr + String.fromCharCode(24); break;
+   case 'ú': finalStr = finalStr + String.fromCharCode(25); break;
+   case 'ñ': finalStr = finalStr + String.fromCharCode(26); break;
+   case 'Ñ': finalStr = finalStr + String.fromCharCode(27); break;
+   case 'ç': finalStr = finalStr + String.fromCharCode(28); break;
+   case 'Ç': finalStr = finalStr + String.fromCharCode(29); break;
+   case 'ü': finalStr = finalStr + String.fromCharCode(30); break;
+   case 'ü': finalStr = finalStr + String.fromCharCode(31); break;
+   default: finalStr = finalStr + Str.charAt(i);
+ }
+ return finalStr;
+};
+
        
 
 // The original PCDAAD readText is split in parts as the key pressing part shoud be somwhere in an eveny handler
@@ -1883,7 +1914,7 @@ function readTextB(keyCode)
     if ((keyCode>=32) && (keyCode<=255))
     {
         if ((readTextStr.length + 2) * COLUMN_WIDTH   + saveX  < Xlimit) // +2 because is one more for the new char being added and another one cause the cursor '_'
-        readTextStr += String.fromCharCode(keyCode) //printable characters
+        readTextStr += String.fromCharCode(keyCode).toUpperCase() //printable characters
     }
     else
     if ((keyCode==8) && (readTextStr!=''))
@@ -2091,18 +2122,32 @@ function listObjects(locno, isLISTAT)
 
 // MALUVA condacts
 
+function XPart(part)
+{
+    XmessagePart = part;
+}
+
+function Xmes(offset)
+{
+    var backup = DDB.getBlock(DDB.getWord(DDB.header.sysmessPos), 512);
+    for (i=0;i<512;i++) DDB.setByte(DDB.getWord(DDB.header.sysmessPos) + i, XMBDATA[offset + i]);
+    writeText(getMessage(DDB.header.sysmessPos, 0));   
+    DDB.setBlock(DDB.getWord(DDB.header.sysmessPos), backup);
+}
+
+
 function _XMES()
 {
     var XMessageOffset = Parameter1;
     DDB.condactPTR++;
-    XMessageOffset = XMessageOffset + DDB.getByte(condactPTR) * 256;
+    XMessageOffset = XMessageOffset + DDB.getByte(DDB.condactPTR) * 256;
     Xmes(XMessageOffset); 
     done = true;
 }
 
 function _XPART()
 {
-    XPart(Parameter1); //FALTA: implementar Xpart
+    XPart(Parameter1); 
 }
 
 // Normal condacts
@@ -2941,7 +2986,7 @@ function _EXTERN()
     }
     /*Please notice even with Maluva Enabled additional EXTERN code can be run, it just happens Maluva functions 
     can intervene and don't let execution come to this point, but if not, then standard EXTERN code may run */
-    condactResult = Extern(Parameter1, Parameter2); 
+    Extern(Parameter1, Parameter2); 
 }
 
 /*--------------------------------------------------------------------------------------*/
@@ -3715,18 +3760,26 @@ $(document).ready(function()
         resizeScreen();
     });
 
+    
     $(document).keydown(function(e) {
         keydownHandler(e);        
     });
+
+    $(document).keyup(function(e) {
+        keyupHandler(e);        
+    });
+
+
+    $(document).keypress(function(e) {
+        keypressHandler(e);        
+    });
+
 
     $(document).click(function(e)
     {
         clickHandler(e);
     });
 
-    $(document).keyup(function(e) {
-        keyupHandler(e);        
-    });
 
     paper = document.getElementById('paper').getContext('2d', { willReadFrequently: true });
 
@@ -3735,6 +3788,7 @@ $(document).ready(function()
     flags.resetFlags();         //Restores flags initial value
     objects.resetObjects();     //Restore objects to "initially at" locations
     windows.resetWindows();     //Clears all windows setup
+
     
     initializeParser(); 
     stack.resetStack();
