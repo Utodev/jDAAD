@@ -2,8 +2,7 @@
 
 TO-DO:
 
-- Timeouts in player input
-- More when too much text printed
+- "More" when too much text printed
 - Escape sequence '#k'. Note: if no doable, make the compiler stop with an error when target is html
 - Make HTML.BAT build script get 6x8.CHR font and convert to font.js, so it's editable like the others
 
@@ -867,21 +866,23 @@ var conjunctions = [] ;
 var globalParseOption = 0; // preseves the option given to PARSE calls (PARSE 1 or PARSE 2), so when the run() loops is broken and handler takes control, it can call back with the proper option
 var XmessagePart = 0;
 
+var writeTextBuffer = '';
+
 var keyBoardStatus = [];
 var keyBoardStatusShiftKeys = 0;
 var keyPressTreated = 0;
 
 // Global var for the ReadText functions
 var ticks = 0;
-var TimeoutHappened = false;
-var TimeoutSeconds = 0;
-var TimeoutPreservedOrder = '';
+var timeoutHappened = false;
+var timeoutPreservedOrder = '';
+var timeoutID = null;
 var SaveX = 0;
 var SaveY = 0;
 var readTextStr = '';
 var inputTakenFromPlayer = false;
 
-// GLobal Vars por QUIT/END
+// GLobal Vars for QUIT/END
 var YesResponse = '';
 var PreserveTimeout = 0;
 
@@ -1002,7 +1003,7 @@ function run(skipToRunCondact)
 
         //These flags should have specific values that code can use to determine the machine running the DDB
         // so they are being set after every condact to make sure even when modified, their value is restored
-        flags.setFlag(FSCREENMODE, 14 + 128); //Makes sure flag 62 has proper value: mode 14 (JDAAD SCeen) and bit 7 set
+        flags.setFlag(FSCREENMODE, 14 + 128); //Makes sure flag 62 has proper value: mode 14 (JDAAD Screen) and bit 7 set
         flags.setFlag(FMOUSE, 128); //Makes sure flag 29 has "graphics" available set, and the rest is empty}
 
         //Let's run the condact
@@ -1123,7 +1124,7 @@ function fixSpanishCharacters(str)
 function getCommand(usePrompt)
 {
         inputBuffer = '';
-        if (usePrompt) Sysmess(SM33); //the prompt
+        if (usePrompt) Sysmess(SM33); else writeText(' '); //the prompt
         //When the prompt appears the last pause line of all windows is resetted
         for(var i=0;i<NUM_WINDOWS;i++) windows.windows[i].lastPauseLine = 0;
         inputBuffer = readText(); //fromEvent = false
@@ -1188,9 +1189,9 @@ function getWordByCodeType(aCode, aVocType)
 }
 
 
-function getPlayerOrders()
+function getPlayerOrders(usePrompt)
 {
-    getCommand(true, false); // usePrompt =true, fromCallBack = false
+    getCommand(usePrompt);
 }
 
 function getPlayerOrdersB()
@@ -1201,6 +1202,7 @@ function getPlayerOrdersB()
 
     if (inPARSE)
     {      
+        if (timeoutID !== null) clearTimeout(timeoutID);
         RestoreStream();
         inputTakenFromPlayer = true;
         parseB();
@@ -1275,8 +1277,8 @@ function parse(Option)
             }
             else if (flags.getFlag(FPROMPT) < DDB.header.numSys) Sysmess(flags.getFlag(FPROMPT));
 
-            inPARSE=true; // Make the keyboardHanlder active as we will ask for an order
-            getPlayerOrders();
+            inPARSE = true; // Make the keyboardHanlder active as we will ask for an order
+            getPlayerOrders(true);
             return;
         } 
         parseB();
@@ -1378,7 +1380,7 @@ function parseEnd()
                     while ((j<4) && (!pronounInSentence)) 
                     {
                     //check if the verb ends with one of the pronominal suffixes
-                        if (otherWords[i].toUpperCase().indexOf(SPANISH_TERMINATIONS[j]) ==  1 + orderWords[i].length - SPANISH_TERMINATIONS[j].length)
+                        if (orderWords[i].toUpperCase().indexOf(SPANISH_TERMINATIONS[j]) ==  1 + orderWords[i].length - SPANISH_TERMINATIONS[j].length)
                         {
                             //If we have a word ending with pronominal suffixes, we need to check whether the word is a verb 
                             //also without the termination, to avoid the HABLA bug where "LA" is part of the verb habLAr and
@@ -1386,7 +1388,7 @@ function parseEnd()
 
                             aSearchWord =  orderWords[i].substring(0, orderWords[i].length - SPANISH_TERMINATIONS[j].length -1);
                             //Then check if still can be recognized as a verb}
-                            aWordRecord = FindWord(aSearchWord, VOC_VERB);
+                            aWordRecord = findWord(aSearchWord, VOC_VERB);
                             if (aWordRecord.aCode!=-1)
                             {
                                 pronounInSentence = true;
@@ -1576,7 +1578,6 @@ function setShiftKeys(e)
 
 function keyupHandler(e)
 {
-    console.log('D:' + String.fromCharCode(e.keyCode) +'(' + e.keyCode +')');
     //Save keyup status for each key to be used with INKEY
     if (keyBoardStatus.includes(e.keyCode)) 
         keyBoardStatus.splice(keyBoardStatus.indexOf(e.keyCode))
@@ -1607,7 +1608,6 @@ function clickHandler(e)
 
 function keypressHandler(e)
 {
-    console.log('K:' + String.fromCharCode(e.charCode) +'(' + e.charCode +')');
     if (inQUIT || inEND || inSAVE || inLOAD || inPARSE)
     {
         // If keyDown didn't handle it
@@ -1617,8 +1617,8 @@ function keypressHandler(e)
 
 function keydownHandler(e)
 {
-    console.log('D:' + String.fromCharCode(e.keyCode) +'(' + e.keyCode +')');
 
+    playerPressedKey = true;
     keyPressTreated = false;
 
     //Save keydown status for each key to be used with INKEY    
@@ -1635,6 +1635,7 @@ function keydownHandler(e)
         {
             keyPressTreated = true;
             readTextB(e.keyCode);
+            return true;
         } 
             
     }
@@ -1644,6 +1645,32 @@ function keydownHandler(e)
         inANYKEY = false;
         if (checkSpecialKeyCodes(e.keyCode, e.ctrlKey)) return true; 
         e.preventDefault();
+        DDB.condactPTR++; // Point to next condact
+        run(true); // skipToRunCondact = true
+    }
+}
+
+function inputTimeoutHandler()
+{
+    var control = flags.getFlag(FTIMEOUT_CONTROL);
+    if (inPARSE)
+    {
+        if (((control & 1) == 0) || (((control & 1) == 1) && (!playerPressedKey)))
+        {
+            flags.setFlag(FTIMEOUT_CONTROL, flags.getFlag(FTIMEOUT_CONTROL) | 0x80); // Set the timeout happened flag
+            timeoutPreservedOrder = readTextStr;
+            if (timeoutPreservedOrder!='') flags.setFlag(FTIMEOUT_CONTROL, flags.getFlag(FTIMEOUT_CONTROL) | 0x40);
+                                    else flags.setFlag(FTIMEOUT_CONTROL, flags.getFlag(FTIMEOUT_CONTROL) & 0xBF); 
+            readTextStr = 't1meout'; //Just a nonsense player order so the parser detects no word
+            Sysmess(SM35); // Time passes...
+            carriageReturn();
+            inputBuffer = readTextStr;
+            getCommandB();        
+        }
+    }
+    if (inANYKEY)
+    {
+        inANYKEY = false;
         DDB.condactPTR++; // Point to next condact
         run(true); // skipToRunCondact = true
     }
@@ -1794,7 +1821,6 @@ function writeChar(c)
         case 0x0E: charsetShift  =128; break; //#g
         case 0x0F: charsetShift  =0; break; // #t
         case 0x0B : clearCurrentWindow();break; //#b
-        // case 0x0C : { while (!keyPressed()) {}; i = readKey(); };break; //#k //This #k is very hard to support in javascript, so it's not supported
         default:
         {
             
@@ -1842,7 +1868,24 @@ function writeWord(aWord)
 //Writes any text to output
 function writeText(aText, doDebug=true)
 {
-    if (doDebug) debug('Output:' + aText);
+   
+    if (doDebug) debug('>>>>[' + aText + ']<<<<');
+    // if something in the text buffer, should be printed first
+    if (writeTextBuffer != '')
+    {
+        aText = writeTextBuffer + aText;
+        writeTextBuffer = '';
+    } 
+    // If a #k is found, only text before is printed now, the rest goes to the buffer
+    var sharpKpos = aText.indexOf(String.fromCharCode(0x0C));
+    if (sharpKpos!=-1)
+    {
+        writeTextBuffer = aText.substring(sharpKpos+1);
+        aText = aText.substring(0, sharpKpos);
+        inANYKEY = true;
+        // this will make execution stop after whatever condact has called this writeText
+    } 
+
     var aWord = '';
     for (var i=0; i < aText.length ; i++)
     {
@@ -1886,25 +1929,27 @@ function PatchStr(Str)
 
        
 
-// The original PCDAAD readText is split in parts as the key pressing part shoud be somwhere in an eveny handler
+// The original PCDAAD readText is split in parts as the key pressing part shoud be somewhere in a handler
 function readText()
 {
     readTextStr = '';
-    saveX  =windows.windows[windows.activeWindow].currentX;
-    saveY  =windows.windows[windows.activeWindow].currentY;
+    SaveX  =windows.windows[windows.activeWindow].currentX;
+    SaveY  =windows.windows[windows.activeWindow].currentY;
     /*if timeout last frame, and there is text to recover, and we should recover*/
     /*bits 7, 6 and 5 for FTIMEOUT_CONTROL set*/
     if ((flags.getFlag(FTIMEOUT_CONTROL) & 0xE0) == 0xE0) 
     {
-        readTextStr = TimeoutPreservedOrder;
-        TimeoutPreservedOrder = '';
+        readTextStr = timeoutPreservedOrder;
+        timeoutPreservedOrder = '';
     }
     flags.setFlag(FTIMEOUT_CONTROL, flags.getFlag(FTIMEOUT_CONTROL)& 0x3F); //Clear bits 7 and 6
     writeText(readTextStr+'_', false);
     timeoutHappened = false;
-    timeoutSeconds = flags.getFlag(FTIMEOUT);
-    ticks  = getTicks(); //FALTA: implementar Timeout
     playerPressedKey  = false;
+    if (flags.getFlag(FTIMEOUT)) // Start timeut
+        timeoutID = setTimeout(function() { 
+            inputTimeoutHandler();        
+        }, flags.getFlag(FTIMEOUT)*1000);
     // The main "wait for a key" loop would start here, but we exit to leave things in hands of the keydown handler
 }
 
@@ -1913,23 +1958,23 @@ function readTextB(keyCode)
     var Xlimit = (windows.windows[windows.activeWindow].col +  windows.windows[windows.activeWindow].width) * COLUMN_WIDTH; //First pixel out of the window
     if ((keyCode>=32) && (keyCode<=255))
     {
-        if ((readTextStr.length + 2) * COLUMN_WIDTH   + saveX  < Xlimit) // +2 because is one more for the new char being added and another one cause the cursor '_'
+        if ((readTextStr.length + 2) * COLUMN_WIDTH   + SaveX  < Xlimit) // +2 because is one more for the new char being added and another one cause the cursor '_'
         readTextStr += String.fromCharCode(keyCode).toUpperCase() //printable characters
     }
     else
     if ((keyCode==8) && (readTextStr!=''))
     {
-        clearWindow(saveX + (readTextStr.length)* COLUMN_WIDTH, saveY, COLUMN_WIDTH, LINE_HEIGHT , windows.windows[windows.activeWindow].PAPER);
+        clearWindow(SaveX + (readTextStr.length)* COLUMN_WIDTH, SaveY, COLUMN_WIDTH, LINE_HEIGHT , windows.windows[windows.activeWindow].PAPER);
         readTextStr = readTextStr.slice(0, -1);
     }
-    windows.windows[windows.activeWindow].currentX = saveX;
-    windows.windows[windows.activeWindow].currentY = saveY;
+    windows.windows[windows.activeWindow].currentX = SaveX;
+    windows.windows[windows.activeWindow].currentY = SaveY;
     var PatchedStr = PatchStr(readTextStr);
     writeText(PatchedStr + '_', false);
     if ((keyCode==13) && (readTextStr!=''))
     {
         // Remove the cursor
-        clearWindow(saveX + readTextStr.length * COLUMN_WIDTH ,  saveY, COLUMN_WIDTH, LINE_HEIGHT , windows.windows[windows.activeWindow].PAPER); 
+        clearWindow(SaveX + readTextStr.length * COLUMN_WIDTH ,  SaveY, COLUMN_WIDTH, LINE_HEIGHT , windows.windows[windows.activeWindow].PAPER); 
         carriageReturn();
         // Ok, now we have the content of the text readed. Now, depending on the condact that asked for a text to be read (PARSE, QUIT or END), we 
         // need to return to the main loop in a different way
@@ -1973,10 +2018,36 @@ function ScrollCurrentWindow()
 {
 
     var win = windows.windows[windows.activeWindow];
+
+
+    //0. Check if too much text listed in order to pause if so (More...)
+    /*
+    if (win.LastPauseLine >= win.height) 
+    {
+        
+     TimeoutHappened := false;
+     TimeoutSeconds := getFlag(FTIMEOUT);
+     {Chek if timeout can happen in More...}
+     if (getFlag(FTIMEOUT_CONTROL) AND $02 = $02) then TimeoutSeconds := getFlag(FTIMEOUT)
+                                                  else TimeoutSeconds := 0;
+     Ticks := getTicks;
+     while not Keypressed and not TimeoutHappened do
+      if  (TimeoutSeconds > 0) and ((getTicks - Ticks)/18.2 > TimeoutSeconds) then TimeoutHappened := true;
+      
+     if not TimeoutHappened then i := ReadKey; {Discard key pressed}
+     windows[ActiveWindow].LastPauseLine := 0;
+    }
+  */
+  
+
+    //1. Move one line up
     var img = paper.getImageData(win.col * COLUMN_WIDTH, (win.line+1) * LINE_HEIGHT, win.width * COLUMN_WIDTH, (win.height-1) * LINE_HEIGHT);
-    clearWindow(win.col * COLUMN_WIDTH, (win.line+win.height-1) * LINE_HEIGHT, win.width * COLUMN_WIDTH, LINE_HEIGHT, win.PAPER);
     paper.putImageData(img, win.col * COLUMN_WIDTH, win.line*LINE_HEIGHT);
 
+    // Fill new empty space at the bottom with paper colour
+    clearWindow(win.col * COLUMN_WIDTH, (win.line+win.height-1) * LINE_HEIGHT, win.width * COLUMN_WIDTH, LINE_HEIGHT, win.PAPER);
+
+    //3.Update Cursor
     win.currentY -= LINE_HEIGHT;
     win.currentX = win.col * COLUMN_WIDTH;
 }
@@ -2005,13 +2076,6 @@ function Sound(frequency, duration)
 }
 
 
-
-
-//Get timer ticks
-function getTicks() 
-{
-    return Date.now();
-}
 
 
 function PreserveStream() 
@@ -2287,7 +2351,7 @@ function _QUIT()
    Sysmess(SM12); // Are you sure? 
    inputBuffer = '';
    inQUIT = true;
-   getPlayerOrders();
+   getPlayerOrders(false);
    
 }
 
@@ -2330,7 +2394,7 @@ function _SAVE()
     Sysmess(SM60); // Type in name of file
     inputBuffer = '';
     inSAVE = true;
-    getPlayerOrders();
+    getPlayerOrders(false);
 }
 
 function _SAVEB() 
@@ -2396,7 +2460,7 @@ function _END()
    //Get first char of SM30, uppercased
    inputBuffer = '';
    inEND = true;
-   getPlayerOrders();
+   getPlayerOrders(false);
    
 }
 
@@ -2433,6 +2497,13 @@ function _OK()
 function _ANYKEY() 
 {
     inANYKEY = true;
+    if (flags.getFlag(FTIMEOUT)) // Timeout duration != 0
+    if ((flags.getFlag(FTIMEOUT_CONTROL) & 4) == 4) // Timeout can happen in ANYKEY
+    timeoutID = setTimeout(function() { 
+        inputTimeoutHandler();        
+    }, flags.getFlag(FTIMEOUT)*1000);
+
+
 }
 
 
