@@ -9,7 +9,7 @@ HOW EXTERN WORKS IN jDAAD:
 2) You can create a different function per each value of Parameter2. Parameter1 
    will be sent to that function. So Parameter2 is like function name, and 
    Parameter 1 is the real parameter.
-3) To add a new function, for instance for Parameter2 = 100, you firs add a new
+3) To add a new function, for instance for Parameter2 = 100, you first add a new
    function to this file, under the  "// Functions to handle each extern" comment, 
    for instance you can add:
 
@@ -22,7 +22,8 @@ HOW EXTERN WORKS IN jDAAD:
 
     externHandlers[100] = whateverthename;
 
-4) AFter doing that, when EXTERN x 100 is called, whaterverthename(x) will be called
+4) After doing that, when "EXTERN x 100" is called in DAAD code, whaterverthename(x) 
+   will be called called in javascript
 
 Accesing game data
 ------------------
@@ -41,29 +42,25 @@ Maluva
 ------
 By default jDAAD supports Maluva extension emulator for XMESSAGE and XPART, which
 means functions 3 and 4 are already taken and you won't get a call for your extern
-handler functions if you use Parameter2 3 or 4. Just use some others or, in case 
+handler functions if Parameter2 is 3 or 4. Just use some others or, in case 
 you really need to use those and you are not going to use XMESSAGES, just modify 
-the value of MALUVA_DISABLED constant in jdaad.js to be true instead of false.
-*/
+the value of MALUVA_DISABLED constant in jdaad.js (in the ASSETS/HTML folder) to 
+be true instead of false.
 
+*/
 
 
 // Gobal vars for externs
 var externHandlers = [];
 
-
 // Initialize Externs
 for (i=0;i<256;i++) externHandlers.push(null);
-var script = document.createElement("script");
-script.setAttribute("type", "text/javascript");
-script.setAttribute("src", 'extern.js');
-document.getElementsByTagName("head")[0].appendChild(script);
 
 // Functions to handle each extern
-function dumbExtern(parameter1)
+function dumbExtern(parameter1) // Example
 {
     console.log('Dumb extern function 0 called with value ' + parameter1);
 }
 
 // Initialize handlers per each parameter2
-externHandlers[0] = dumbExtern;
+externHandlers[0] = dumbExtern; // Example
