@@ -1,12 +1,8 @@
-html {
-		
-}
-
 body {
 	font-family: GraublauWeb, Verdana, arial, helvetica;
 	background-image: url("background.png");
-	background-repeat: no-repeat;
 	background-size: cover;
+	background-position: 50% 50%;
 	color: #14143d;
 }
 
@@ -29,13 +25,12 @@ a:hover {
 
 .screenClass /* the whole screen */
 {
-	padding: 40px; /* BORDER effect */
-	width: 640px;
-	height: 480px;  /* 640x480 plus 40px margin */
-	margin-right: auto;
-	margin-left: auto;
-	margin-top:40px;
-	top: 0;
+	padding: 5vmin; /* BORDER effect */
+	width: 90vmin;
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
 	background-color: black;
 }
 
