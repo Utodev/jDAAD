@@ -1,9 +1,12 @@
+
+
 body {
 	font-family: GraublauWeb, Verdana, arial, helvetica;
-	background-image: url("background.png");
-	background-size: cover;
-	background-position: 50% 50%;
-	color: #14143d;
+	background-image: radial-gradient(#0b0d5c 2px, transparent 2px), radial-gradient(#0b0d5c 2px, transparent 2px);
+	background-size: 32px 32px;
+	background-position: 0 0, 16px 16px;
+	background-color: #070a20;
+	color: white;
 }
 
 
@@ -25,12 +28,13 @@ a:hover {
 
 .screenClass /* the whole screen */
 {
-	padding: 5vmin; /* BORDER effect */
-	width: 90vmin;
-	position: absolute;
-	top: 50%;
-	left: 50%;
-	transform: translate(-50%, -50%);
+	padding: 40px; /* BORDER effect */
+	width: 720px;
+	height: 480px;  /* 640x480 plus 40px margin */
+	margin-right: auto;
+	margin-left: auto;
+	margin-top:40px;
+	top: 0;
 	background-color: black;
 }
 
@@ -40,6 +44,16 @@ a:hover {
 	background-color: black;
 }
 
+.anykey_layer {
+	position:absolute;
+	left: 0;
+	top:0;
+	bottom:0;
+	right:0;
+	background-color: transparent;
+	z-index: 2000;
+	display: none;
+}
 
 .goodbye {
 	position:absolute;
@@ -48,20 +62,9 @@ a:hover {
 	bottom:0;
 	right:0;
 	background-color: black;
-	font-size: medium;
-	padding: 20px;
-	color: whitesmoke;
+	color: white;
 	z-index: 4000;
 	display: none;
+
 }
 
-#imageBuffer 
-{
-	position:absolute;
-	left: 0;
-	top:0;
-	bottom:0;
-	right:0;
-	display:none;
-	z-index: -1;
-}
