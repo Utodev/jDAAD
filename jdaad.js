@@ -4,18 +4,9 @@ TO-DO:
 
 - Timeouts in player input
 - More when too much text printed
-- Escape sequence '#k'. Note: if no doable, make the compiler stop with an error when target is html
 - Make HTML.BAT build script get 6x8.CHR font and convert to font.js, so it's editable like the others
 
-PENDING CHECKS:
- 
- - Check if PARSE 1 works
- - Check containers and wearables
- - Check AUTOP/AUTOT with DOALL
- - Chequea getObjectFullWeight because in unclear circumstances it produced a stack overflow due to 
-   endless loop
-
-KNOW BUGS (or features):
+KNOWN BUGS (or features):
 
 - Beep can't sound until player has either clicked or pressed a key. It's a limitation of javascript
   so it can't be solved.
