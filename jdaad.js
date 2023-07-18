@@ -538,14 +538,14 @@ class DDBClass {
     getBlock(address, length)
     {
         var result = [];
-        for (i=0;i<length;i++) result.push(this.getByte(address+i));
+        for (var i=0;i<length;i++) result.push(this.getByte(address+i));
         return result;
     }
 
 
     setBlock(address, data)
     {
-        for (i=0;i<data.length;i++) this.setByte(address + i, data[i]);
+        for (var i=0;i<data.length;i++) this.setByte(address + i, data[i]);
     }
 
 
@@ -790,6 +790,7 @@ class objectClass {
 }
 
 class stackElementClass {
+    currentProcess = 0;
     processPTR = 0;
     entryPTR = 0;
     condactPTR = 0;
@@ -831,6 +832,7 @@ class stackClass {
         DDB.doallentryPTR = stackElement.doallentryPTR;
         DDB.doallLocation = stackElement.doallLocation;
         flags.setFlag(FDOALL, stackElement.DoallFlag);
+        currentProcess = stackElement.currentProcess;
     }
 
     stackPush()
@@ -843,6 +845,7 @@ class stackClass {
         stackElement.doallentryPTR = DDB.doallentryPTR;
         stackElement.DoallFlag = flags.getFlag(FDOALL);
         stackElement.doallLocation = DDB.doallLocation;
+        stackElement.currentProcess = currentProcess;
         this.processStack[this.stackPTR] = stackElement;
         this.stackPTR++;
     }
@@ -851,6 +854,7 @@ class stackClass {
 // global vars
 
 
+var currentProcess = 0;
 var inputBuffer = '';
 var imageBufferID = false;
 var flags = new flagClass();
@@ -864,7 +868,7 @@ var previousVerb = NO_WORD;
 var playerOrderQuoted = '';
 var playerOrder = '';
 var conjunctions = [] ;
-var globalParseOption = 0; // preseves the option given to PARSE calls (PARSE 1 or PARSE 2), so when the run() loops is broken and handler takes control, it can call back with the proper option
+var globalParseOption = 0; // preseves the option given to PARSE calls (PARSE 0 or PARSE 1), so when the run() loops is broken and handler takes control, it can call back with the proper option
 var XmessagePart = 0;
 
 var keyBoardStatus = [];
@@ -876,12 +880,12 @@ var ticks = 0;
 var TimeoutHappened = false;
 var TimeoutSeconds = 0;
 var TimeoutPreservedOrder = '';
-var SaveX = 0;
-var SaveY = 0;
+var saveX = 0;
+var saveY = 0;
 var readTextStr = '';
 var inputTakenFromPlayer = false;
 
-// GLobal Vars por QUIT/END
+// Global Vars for QUIT/END
 var YesResponse = '';
 var PreserveTimeout = 0;
 
@@ -897,7 +901,12 @@ var inEND = false;
 var inQUIT = false;
 var inSAVE = false;
 var inLOAD = false;
+var inMORE =false; // Unlike the others, it's not a first level status variable, it's a type of inANYKEY. So there could be inANYKEY=true, inMORE=true (when on More..) and inAnykey=true, inMORE=false (when on ANYKEY)
 var isTerminated = false;
+
+var patchedStr = '';
+var writeTextBuffer = ''; //Keeps the text that should be printed after a "More..." prompt
+var writeTextDone = false; // Keeps the "done" status when a text is split for "More..."
 
 // DAAD Main loop. Please notice this funcion differs from the original function with the same name in PCDAAD. The main issue
 // I faced is Javascript is a monothreaded execution language, whose only way to get keystrokes is via events that only happen
@@ -924,6 +933,7 @@ function run(skipToRunCondact)
     {
         if (DDB.getByte(DDB.entryPTR) == END_OF_PROCESS_MARK) 
         {
+            debug('    EOP', 'terminator');
             var moreDOALL = false;
             //If DOALL loop in execution}
             if (DDB.doallPTR != 0)
@@ -953,9 +963,10 @@ function run(skipToRunCondact)
             
             if (!moreDOALL)
             {
-                debug ('Process finishes normally')
+                debug ('Process '+currentProcess+' finished.')
             //process finishes normally
                 stack.stackPop();
+                debug ('Process ' + currentProcess + ' continues...')
                 if (isTerminated) 
                 {
                     $('.goodbye').show();
@@ -969,19 +980,17 @@ function run(skipToRunCondact)
 
     if (!skipToRunCondact)
     {
-        //debug('Check Valid Entry');
-        ValidEntry = ((DDB.getByte(DDB.entryPTR) == flags.getFlag(FVERB)) || (DDB.getByte(DDB.entryPTR) == NO_WORD))
+        var ValidEntry = ((DDB.getByte(DDB.entryPTR) == flags.getFlag(FVERB)) || (DDB.getByte(DDB.entryPTR) == NO_WORD))
              && ((DDB.getByte(DDB.entryPTR+1) == flags.getFlag(FNOUN)) || (DDB.getByte(DDB.entryPTR+1) == NO_WORD));
 
         DDB.condactPTR = DDB.getWord(DDB.entryPTR + 2);
 
         if (!ValidEntry)
         {
-            //debug('Entry Not Valid');
             DDB.entryPTR += 4;
             continue RunEntry;
         }
-        debug('> ' + getWordByCodeType(DDB.getByte(DDB.entryPTR),VOC_VERB) + ' ' + getWordByCodeType(DDB.getByte(DDB.entryPTR+1), VOC_NOUN) );
+        debug('> ' + getWordByCodeType(DDB.getByte(DDB.entryPTR),VOC_VERB) + ' ' + getWordByCodeType(DDB.getByte(DDB.entryPTR+1), VOC_NOUN) + ''.padEnd(50,' ') , 'entry');
 
     }   
 
@@ -989,13 +998,26 @@ function run(skipToRunCondact)
     RunCondact: while (true)
     {
         skipToRunCondact = false;
+
+        // First check if there's pending text to write
+        if (writeTextBuffer!='')
+        {
+            while(writeTextBuffer!='')
+            {
+                done =writeTextDone;
+                writeText('');
+                if (inMORE) return;
+            }
+            DDB.condactPTR++;
+            done =false;
+        }
         
-        //First check if no more condacts in the entry, if so, move to next entry
+        //Then check if no more condacts in the entry, if so, move to next entry
         condactResult = true;
         var opcode = DDB.getByte(DDB.condactPTR);
         if (opcode == END_OF_CONDACTS_MARK)
         {
-            debug('    EOC');
+            debug('    EOC', 'terminator');
             DDB.entryPTR += 4;
             continue RunEntry;
         }
@@ -1009,6 +1031,8 @@ function run(skipToRunCondact)
         var indirection =  ((opcode & 0x80) != 0) 
         if (indirection) opcode &= 0x7F;
         var debugStr = condactTable[opcode].condactName + ' ';
+        var  condactStyle = 'condact';
+        if ((debugStr == 'DONE    ') || (debugStr == 'NOTDONE ') || (debugStr == 'RESTART ') || (debugStr == 'REDO    ') || (debugStr == 'END     ') || (debugStr == 'OK      ')) condactStyle = 'terminator'; 
         
         //get parameters
         if (condactTable[opcode].numParams > 0) 
@@ -1030,7 +1054,7 @@ function run(skipToRunCondact)
             }
         }
         
-        debug('    ' + debugStr);
+        debug('    ' + debugStr, condactStyle);
         //run condact
         condactResult = true;
         condactTable[opcode].condactRoutine(); //Execute the condact
@@ -1070,12 +1094,12 @@ function initializeParser()
     //Clears the input buffer}
     inputBuffer = '';
     // Creates the Conjunctions array}
-    ptr = DDB.header.vocabularyPos;
+    var ptr = DDB.header.vocabularyPos;
     while (DDB.getByte(ptr)!= 0) 
     {
         if (VOC_TYPE.indexOf(DDB.getByte(ptr+6)) == VOC_CONJUGATION)
         {
-        aVocWord = '';
+        var aVocWord = '';
         for (var i=0;i<WORD_LENGHT;i++)
                 if ((DDB.getByte(ptr+i) ^ OFUSCATE_VALUE)!=32) 
                     aVocWord+= String.fromCharCode(DDB.getByte(ptr+i) ^ OFUSCATE_VALUE); 
@@ -1140,13 +1164,13 @@ function getCommandB()
 function findWord(aWord, aVocType)
 {
     var Result = {};
-    ptr = DDB.header.vocabularyPos;
+    var ptr = DDB.header.vocabularyPos;
     Result.aCode = -1;
     aWord = aWord.toUpperCase();
     while (DDB.getByte(ptr)!= 0) 
     {
         //Get a word from Vocabulary
-        aVocWord = '';
+        var aVocWord = '';
         for(var i=0; i < WORD_LENGHT;i++)
             if ((DDB.getByte(ptr+i) ^ OFUSCATE_VALUE)!=32) 
             aVocWord  += String.fromCharCode(DDB.getByte(ptr+i) ^ OFUSCATE_VALUE); 
@@ -1169,11 +1193,11 @@ function getWordByCodeType(aCode, aVocType)
 {
     if (aCode == NO_WORD) return '_';
     
-    ptr = DDB.header.vocabularyPos;   
+    var ptr = DDB.header.vocabularyPos;   
     while (DDB.getByte(ptr)!= 0) 
     {
         //Get a word from Vocabulary
-        aVocWord = '';
+        var aVocWord = '';
         for(var i=0; i < WORD_LENGHT;i++)
             if ((DDB.getByte(ptr+i) ^ OFUSCATE_VALUE)!=32) 
             aVocWord  += String.fromCharCode(DDB.getByte(ptr+i) ^ OFUSCATE_VALUE); 
@@ -1196,7 +1220,7 @@ function getPlayerOrders()
 function getPlayerOrdersB()
 {
     inputBuffer= inputBuffer.toUpperCase();
-    for (i=0; i< conjunctions.length;i++)
+    for (var i=0; i< conjunctions.length;i++)
          inputBuffer = inputBuffer.replace(conjunctions[i],'.');
 
     if (inPARSE)
@@ -1293,7 +1317,7 @@ function parseB()
 {
       //Extract an order
       playerOrder = '';
-      i = 0;
+      var i = 0;
       while ( (!STANDARD_SEPARATORS.includes(inputBuffer.charAt(i))) && (i < inputBuffer.length)) 
       {
           playerOrder +=  inputBuffer.charAt(i);
@@ -1302,15 +1326,16 @@ function parseB()
 
       if (i > inputBuffer.length) inputBuffer = ''; //If finished, we empty the inputBuffer
                               else inputBuffer =  inputBuffer.substring(i+1); //If not , we set it to the remaining after the separator
+
   
       //Try to find a quoted sentence in the order. If found, text before the quoted setence goes to playerOrder,
       // and text after the quotes is stored in global variable playerOrderQuoted, in case it is later required by PARSE 1
   
       if (playerOrder.indexOf('"') != -1)
       {
-          playerOrderQuoted = playerOrder.substring(playerOrder.indexOf('"')+1);
-          if (playerOrderQuoted.indexOf('"') != -1)  playerOrderQuoted = playerOrderQuoted.substring(0,playerOrderQuoted.indexOf('"')-1);
-          playerOrder =  playerOrder.substring(playerOrder.indexOf('"')-1);
+          playerOrderQuoted = playerOrder.substring(playerOrder.indexOf('"') + 1);
+          if (playerOrderQuoted.indexOf('"') != -1)  playerOrderQuoted = playerOrderQuoted.substring(0, playerOrderQuoted.indexOf('"'));
+          playerOrder =  playerOrder.substring(0, playerOrder.indexOf('"'));
       
           //Because orginal interpreters make a difference betwee 'SAY JOHN'  and 'SAY JOHN ""'}
           playerOrderQuoted = playerOrderQuoted.trim();
@@ -1321,13 +1346,13 @@ function parseB()
 
 function parseEnd()
 {
-    result = false;
+    var result = false;
     if (playerOrder == '') // This can only happen if we get here from a PARSE 1 or above
         return  false; // To force next condact execution 
 
 
     playerOrder = playerOrder.trim();
-
+    debug(playerOrder.padEnd(50,' ') , 'parse')
     //remove double spaces
     while (playerOrder.indexOf('  ') != -1) playerOrder.replace('  ',' ');
     //split order into words}
@@ -1347,8 +1372,9 @@ function parseEnd()
     var orderWordCount = orderWords.length;
     while ((i < orderWordCount) && (orderWords[i]!='') )
     {
-        aSearchWord = orderWords[i]; 
-        aWordRecord = findWord(aSearchWord, VOC_ANY);
+        var aSearchWord = orderWords[i]; 
+        if (aSearchWord.length>WORD_LENGHT) aSearchWord = aSearchWord.substring(0, WORD_LENGHT);
+        var aWordRecord = findWord(aSearchWord, VOC_ANY);
         if (aWordRecord.aCode!= - 1)
         {
             if ((aWordRecord.aType == VOC_VERB) && (flags.getFlag(FVERB) == NO_WORD)) flags.setFlag(FVERB,aWordRecord.aCode); else
@@ -1374,19 +1400,20 @@ function parseEnd()
             {
                 if ((aWordRecord.aType == VOC_VERB) && (!pronounInSentence))
                 {
-                    j = 0;
+                    var j = 0;
                     while ((j<4) && (!pronounInSentence)) 
                     {
                     //check if the verb ends with one of the pronominal suffixes
-                        if (otherWords[i].toUpperCase().indexOf(SPANISH_TERMINATIONS[j]) ==  1 + orderWords[i].length - SPANISH_TERMINATIONS[j].length)
+                        if (orderWords[i].toUpperCase().indexOf(SPANISH_TERMINATIONS[j]) == orderWords[i].length - SPANISH_TERMINATIONS[j].length)
                         {
                             //If we have a word ending with pronominal suffixes, we need to check whether the word is a verb 
                             //also without the termination, to avoid the HABLA bug where "LA" is part of the verb habLAr and
                             //not a suffix. So first we remove the termination:}
+                            aSearchWord =  orderWords[i].substring(0, orderWords[i].length - SPANISH_TERMINATIONS[j].length);
+                            if (aSearchWord.length>WORD_LENGHT) aSearchWord = aSearchWord.substring(0, WORD_LENGHT);
 
-                            aSearchWord =  orderWords[i].substring(0, orderWords[i].length - SPANISH_TERMINATIONS[j].length -1);
                             //Then check if still can be recognized as a verb}
-                            aWordRecord = FindWord(aSearchWord, VOC_VERB);
+                            aWordRecord = findWord(aSearchWord, VOC_VERB);
                             if (aWordRecord.aCode!=-1)
                             {
                                 pronounInSentence = true;
@@ -1418,7 +1445,7 @@ function parseEnd()
 
     //Missing verb but present noun, replace with previous verb}
     if (!inputTakenFromPlayer)  //If the current sentece came from buffer
-    if ((flags.getFlag(FVERB)==NO_WORD) && (flags.getFlag(FNOUN)!=NO_WORD) && (previousVerb!=NO_WORD))  flags.setFlag(FVERB, PreviousVerb);
+    if ((flags.getFlag(FVERB)==NO_WORD) && (flags.getFlag(FNOUN)!=NO_WORD) && (previousVerb!=NO_WORD))  flags.setFlag(FVERB, previousVerb);
 
     //Apply pronouns or terminations if needed
     if ((flags.getFlag(FNOUN)==NO_WORD) && (pronounInSentence) &&  (flags.getFlag(FPRONOUN)!=NO_WORD) )
@@ -1435,7 +1462,7 @@ function parseEnd()
     }
 
     //Preserve verb to be used by next sentence}
-    if (flags.getFlag(FVERB)!=NO_WORD) pPreviousVerb = flags.getFlag(FVERB);
+    if (flags.getFlag(FVERB)!=NO_WORD) previousVerb = flags.getFlag(FVERB);
 
     if ((flags.getFlag(FVERB)!=NO_WORD) || (flags.getFlag(FNOUN)!=NO_WORD)) result = true;
     
@@ -1465,7 +1492,8 @@ function replaceArticles(str, replace, caps, stopAtDot)
             //un -> el
             if ((str.charAt(0).toUpperCase() == 'U') && (str.charAt(1).toUpperCase() == 'N') && (str.charAt(2)==' ')) 
             {
-                if (caps) newArticle = 'El'; else newArticle = 'el';
+                var newArticle = 'el';
+                if (caps) newArticle = 'El';
                 return newArticle + str.substring(2);
             }
         
@@ -1498,15 +1526,15 @@ function replaceArticles(str, replace, caps, stopAtDot)
 
 function getToken(id)
 {
-    index = 0;
-    ptr = DDB.header.tokenPos + 1; //Apparently, token table starts one byte after the token pointer
+    var index = 0;
+    var ptr = DDB.header.tokenPos + 1; //Apparently, token table starts one byte after the token pointer
     while (index < id) 
     {
      if (DDB.getByte(ptr) > 127) index++;
      ptr++;
     }
    
-    auxStr = '';
+    var auxStr = '';
     while (DDB.getByte(ptr) <= 127) 
     {
         auxStr += String.fromCharCode(DDB.getByte(ptr));
@@ -1527,16 +1555,16 @@ function getMessageInternal(tableOffset, messageNumber)
     {       
         if (aByte < 128) 
         {
-            tokenID = (aByte ^ OFUSCATE_VALUE) - 128;
-            token = getToken(tokenID);
+            var tokenID = (aByte ^ OFUSCATE_VALUE) - 128;
+            var token = getToken(tokenID);
             workStr += token
         }
         else 
         {
-            mychar = String.fromCharCode(aByte ^ OFUSCATE_VALUE);
+            var mychar = String.fromCharCode(aByte ^ OFUSCATE_VALUE);
             if ((mychar == ESCAPE_OBJNAME) || (mychar == ESCAPE_OBJNAME_CAPS))
             {
-                escapeText = getMessageInternal(DDB.header.objectPos, flags.getFlag(FREFOBJ));
+                var escapeText = getMessageInternal(DDB.header.objectPos, flags.getFlag(FREFOBJ));
                 escapeText = replaceArticles(escapeText, true, aByte == ESCAPE_OBJNAME_CAPS, true);
                 workStr += escapeText;
             } 
@@ -1560,9 +1588,21 @@ function getMessageOTX(objno, replace,  caps, stopAtDot)
     return escapeText = replaceArticles(escapeText, replace,  caps, stopAtDot);
 }
 
-function debug(string)
+function debug(string, style='normal')
 {
-    if (DEBUG_ENABLED) console.log(string);
+    var css = 'background: #fff; color: #000';
+    switch (style)
+    {
+        case 'normal': css = 'background: #fff; color: #000'; break;
+        case 'condact': css = 'background: #fff; color: blue; '; break;
+        case 'terminator' : css = 'background: #fff; color: #000099; font-weight: bold '; break;
+        case 'text': css = 'background: #ffd; color: #000;'; break;
+        case 'parse': css = 'background: #dfd; color: #000; border:  1px dotted black; padding: 4px; border-radius: 5px'; break;
+        case 'entry': css = 'background: #eff; color: #000;  border: 1px dotted black; padding: 4px; border-radius: 5px'; break;
+        case 'development': css = 'background: #f00; color: #ffff;  border: 2px fixed black; padding: 10px; border-radius: 10px'; break;
+    }
+
+    if (DEBUG_ENABLED) console.log('%c ' + string, css);
 }
 
 function setShiftKeys(e)
@@ -1576,7 +1616,6 @@ function setShiftKeys(e)
 
 function keyupHandler(e)
 {
-    console.log('D:' + String.fromCharCode(e.keyCode) +'(' + e.keyCode +')');
     //Save keyup status for each key to be used with INKEY
     if (keyBoardStatus.includes(e.keyCode)) 
         keyBoardStatus.splice(keyBoardStatus.indexOf(e.keyCode))
@@ -1597,9 +1636,10 @@ function clickHandler(e)
 {
     if (inANYKEY)
     {
-        inANYKEY = false;
         e.preventDefault();
-        DDB.condactPTR++; // Point to next condact
+        e.stopPropagation();
+        if (!inMORE) DDB.condactPTR++; // Point to next condact
+        inANYKEY = inMORE = false;
         run(true); // skipToRunCondact = true
     }
 }
@@ -1607,7 +1647,6 @@ function clickHandler(e)
 
 function keypressHandler(e)
 {
-    console.log('K:' + String.fromCharCode(e.charCode) +'(' + e.charCode +')');
     if (inQUIT || inEND || inSAVE || inLOAD || inPARSE)
     {
         // If keyDown didn't handle it
@@ -1617,8 +1656,6 @@ function keypressHandler(e)
 
 function keydownHandler(e)
 {
-    console.log('D:' + String.fromCharCode(e.keyCode) +'(' + e.keyCode +')');
-
     keyPressTreated = false;
 
     //Save keydown status for each key to be used with INKEY    
@@ -1635,17 +1672,20 @@ function keydownHandler(e)
         {
             keyPressTreated = true;
             readTextB(e.keyCode);
+            return;
         } 
             
     }
 
     if (inANYKEY)
     {
-        inANYKEY = false;
         if (checkSpecialKeyCodes(e.keyCode, e.ctrlKey)) return true; 
         e.preventDefault();
-        DDB.condactPTR++; // Point to next condact
+        e.stopPropagation();
+        if (!inMORE) DDB.condactPTR++; // Point to next condact
+        inANYKEY = inMORE = false;
         run(true); // skipToRunCondact = true
+        return;
     }
 }
 
@@ -1674,6 +1714,7 @@ function delay(seconds)
 
 function clearWindow(X, Y, width, height, paperColor)
 {
+    if (width>=318) width = 320; 
     paper.fillStyle = getFillStyle(paperColor);
     paper.fillRect(X, Y, width, height)
 
@@ -1789,6 +1830,7 @@ function nextChar()
 
 function writeChar(c)
 {
+    var charsetShift;
     switch(c)
     {
         case 0x0E: charsetShift  =128; break; //#g
@@ -1835,14 +1877,31 @@ function writeWord(aWord)
     if (StrLenInPixels(aWord) + windows.windows[windows.activeWindow].currentX >= Xlimit) carriageReturn();
     if  (! (windows.lastPrintedIsCR  && (aWord==' ')) )
         for (var i = 0; i<aWord.length;i++) writeChar(aWord.charCodeAt(i));
-    windows.lastPrintedIsCR = false;
-     
+    windows.lastPrintedIsCR = false;    
 }
 
 //Writes any text to output
 function writeText(aText, doDebug=true)
 {
-    if (doDebug) debug('Output:' + aText);
+    // 1.- Recover the buffer
+    aText = writeTextBuffer + aText;
+    writeTextBuffer = '';
+    // 2.- Check for #k forced pause
+    var sharpKpos = aText.indexOf(String.fromCharCode(0x0C));
+    if (sharpKpos!=-1)
+    {
+        writeTextBuffer = aText.substring(sharpKpos + 1);
+        aText = aText.substring(0, sharpKpos);
+        inANYKEY = inMORE = true;  // this will make execution stop after whatever condact has called this writeText
+        writeTextDone = done;
+    } 
+
+    // 3.- check if text will fit in remaining non-scroll window
+
+    //FALTA
+
+    // 4.- Print what it should be printed now
+    if (doDebug) debug(aText, 'text');
     var aWord = '';
     for (var i=0; i < aText.length ; i++)
     {
@@ -1859,7 +1918,7 @@ function writeText(aText, doDebug=true)
 function PatchStr(Str)
 {
  var finalStr ='';
- for (i=0;i<Str.length;i++)
+ for (var i=0;i<Str.length;i++)
  switch(Str.charAt(i))
  {
    // Original DAAD characters 
@@ -1878,7 +1937,7 @@ function PatchStr(Str)
    case 'ç': finalStr = finalStr + String.fromCharCode(28); break;
    case 'Ç': finalStr = finalStr + String.fromCharCode(29); break;
    case 'ü': finalStr = finalStr + String.fromCharCode(30); break;
-   case 'ü': finalStr = finalStr + String.fromCharCode(31); break;
+   case 'Ü': finalStr = finalStr + String.fromCharCode(31); break;
    default: finalStr = finalStr + Str.charAt(i);
  }
  return finalStr;
@@ -1901,10 +1960,9 @@ function readText()
     }
     flags.setFlag(FTIMEOUT_CONTROL, flags.getFlag(FTIMEOUT_CONTROL)& 0x3F); //Clear bits 7 and 6
     writeText(readTextStr+'_', false);
-    timeoutHappened = false;
-    timeoutSeconds = flags.getFlag(FTIMEOUT);
+    TimeoutHappened = false;
+    TimeoutSeconds = flags.getFlag(FTIMEOUT);
     ticks  = getTicks(); //FALTA: implementar Timeout
-    playerPressedKey  = false;
     // The main "wait for a key" loop would start here, but we exit to leave things in hands of the keydown handler
 }
 
@@ -1924,8 +1982,8 @@ function readTextB(keyCode)
     }
     windows.windows[windows.activeWindow].currentX = saveX;
     windows.windows[windows.activeWindow].currentY = saveY;
-    var PatchedStr = PatchStr(readTextStr);
-    writeText(PatchedStr + '_', false);
+    patchedStr = PatchStr(readTextStr);
+    writeText(patchedStr + '_', false);
     if ((keyCode==13) && (readTextStr!=''))
     {
         // Remove the cursor
@@ -1955,7 +2013,7 @@ function clearCurrentWindow()
    
     windows.windows[windows.activeWindow].currentY = windows.windows[windows.activeWindow].line * LINE_HEIGHT;
     windows.windows[windows.activeWindow].currentX = windows.windows[windows.activeWindow].col * COLUMN_WIDTH;
-    windows.windows[windows.activeWindow].lastPauseLine = 0;    
+    windows.windows[windows.activeWindow].lastPauseLine = 0;
 }
 
 //When pos or size of window is set, this function is called to make sure it doesn't exceed the size
@@ -2032,7 +2090,7 @@ function RestoreStream()
     if ((flags.getFlag(FTIMEOUT_CONTROL) & 0x10) == 0x10) 
     {
      Sysmess(SM33); //The prompt
-     writeText( PatchedStr + chr(13));
+     writeText( patchedStr + String.fromCharCode(13));
     }
 }
 
@@ -2049,7 +2107,7 @@ function Sysmess(sysno)
 
 function preloadImages()
 {
-    for (i=0;i<images.length;i++)
+    for (var i=0;i<images.length;i++)
     {
           var img=new Image();
           img.src=images[i] + '.png';
@@ -2130,8 +2188,8 @@ function XPart(part)
 function Xmes(offset)
 {
     var backup = DDB.getBlock(DDB.getWord(DDB.header.sysmessPos), 512);
-    for (i=0;i<512;i++) DDB.setByte(DDB.getWord(DDB.header.sysmessPos) + i, XMBDATA[offset + i]);
-    writeText(getMessage(DDB.header.sysmessPos, 0));   
+    for (var i=0;i<512;i++) DDB.setByte(DDB.getWord(DDB.header.sysmessPos) + i, XMBDATA[offset + i]);
+    writeText(getMessage(DDB.header.sysmessPos, 0));
     DDB.setBlock(DDB.getWord(DDB.header.sysmessPos), backup);
 }
 
@@ -2178,14 +2236,14 @@ function _ATLT()
 /*--------------------------------------------------------------------------------------*/
 function _PRESENT()
 {
-    objectLocation = objects.getObjectLocation(Parameter1);
+    var objectLocation = objects.getObjectLocation(Parameter1);
     condactResult = (objectLocation == LOC_CARRIED) || (objectLocation == LOC_WORN) || (objectLocation == flags.getFlag(FPLAYER)) ;
 }
 
 /*--------------------------------------------------------------------------------------*/
 function _ABSENT()
 {
-    objectLocation =objects.getObjectLocation(Parameter1);
+    var objectLocation =objects.getObjectLocation(Parameter1);
     condactResult = (objectLocation != LOC_CARRIED) && (objectLocation != LOC_WORN) && (objectLocation != flags.getFlag(FPLAYER)) ;
 }
 
@@ -2417,7 +2475,7 @@ function _ENDB()
 function _DONE()
 {
  done = true;
- DDB.ConsumeProcess; //Go to last entry
+ DDB.consumeProcess(); //Go to last entry
  //force failure so we jump to next entry, which happens to be the mark of end of process
  condactResult = false; 
 }
@@ -2466,8 +2524,8 @@ function _DISPLAY()
 
     
     
-    for (y=0;y<imageHeight;y++)
-        for(x=0;x<imageWidth;x++)
+    for (var y=0;y<imageHeight;y++)
+        for(var x=0;x<imageWidth;x++)
          {          
             if ((x<windowWidth) && (y<windowHeight)) // clip image
             {
@@ -2495,7 +2553,7 @@ function _DROPALL()
    var here = flags.getFlag(FPLAYER);
    for(var locno = LOC_CARRIED; locno<=LOC_WORN; locno++)
    {
-        nextObject = - 1;
+    var nextObject = - 1;
         do
         {
             nextObject = objects.getNextObjectAt(nextObject, locno);
@@ -2547,7 +2605,6 @@ function _AUTOD()
  var Noun = flags.getFlag(FNOUN);
  var Adject = flags.getFlag(FADJECT);
  Parameter1 = objects.getObjectByVocabularyAtLocation(Noun, Adject, LOC_CARRIED);
- debug('AUTOD: ' + Parameter1);
  if (Parameter1 != MAX_OBJECT) 
  {
     _DROP();
@@ -2645,7 +2702,7 @@ function _AUTOR()
 /*--------------------------------------------------------------------------------------*/
 function _PAUSE() 
 {
- if (Parameter1 = 0) delay(5.12); else delay(Parameter1/50); 
+ if (Parameter1 == 0) delay(5.12); else delay(Parameter1/50); 
  done = true; 
 }
 
@@ -2667,8 +2724,7 @@ function _GOTO()
 /*--------------------------------------------------------------------------------------*/
 function _MESSAGE()
 {
- _MES();
- _NEWLINE();
+ _MES(true);
 }
 
 /*--------------------------------------------------------------------------------------*/
@@ -2719,7 +2775,7 @@ function _REMOVE()
 function _GET() 
 {
  objects.setReferencedObject(Parameter1);
- ObjectLocation = objects.getObjectLocation(Parameter1);
+ var ObjectLocation = objects.getObjectLocation(Parameter1);
  if ((ObjectLocation == LOC_WORN) || (ObjectLocation==LOC_CARRIED)) 
  {
   Sysmess(SM25); //I already have the_.
@@ -2749,7 +2805,7 @@ function _GET()
  if (flags.getFlag(FCARRIED) >= flags.getFlag(FOBJECTS_CONVEYABLE)) 
  {
   Sysmess(SM27); //I can't carry any more things.
-  doallPTR = 0;
+  DDB.doallPTR = 0;
   newtext();
   _DONE();
   return;
@@ -2832,7 +2888,7 @@ function _WEAR()
   Sysmess(SM40); //I can't wear the _.
   newtext();
   _DONE();
-  exit;
+  return;
  }
 
  objects.setObjectLocation(Parameter1, LOC_WORN);
@@ -2860,7 +2916,7 @@ function _SWAP()
 {
  var Aux = objects.getObjectLocation(Parameter1);
  objects.setObjectLocation(Parameter1, objects.getObjectLocation(Parameter2));
- objects.setObjectLocation(Parameter2, aux);
+ objects.setObjectLocation(Parameter2, Aux);
  objects.setReferencedObject(Parameter2);
  done = true;
 }
@@ -2921,8 +2977,8 @@ function _NEWLINE()
 /*--------------------------------------------------------------------------------------*/
 function _PRINT()
 {
- value = flags.getFlag(Parameter1);
- valstr = value + '';
+ var value = flags.getFlag(Parameter1);
+ var valstr = value + '';
  writeText(valstr);
  done = true;
 }
@@ -3100,6 +3156,7 @@ function _PROCESS()
 {
     if (Parameter1 >= DDB.header.numPro) Error(3, 'Process ' + Parameter1 + 'does not exist'); 
     stack.stackPush();
+    currentProcess = Parameter1;
     if (NESTED_DOALL_ENABLED) 
     {
         DDB.doallPTR = 0;
@@ -3124,10 +3181,12 @@ function _SAME()
 }
 
 /*--------------------------------------------------------------------------------------*/
-function _MES()
+function _MES(withCR = false)
 {
-  writeText(getMessage(DDB.header.messagePos, Parameter1));
-  done = true;
+    var message = getMessage(DDB.header.messagePos, Parameter1);
+    if (withCR) message += String.fromCharCode(13);
+    done = true;
+    writeText(message);
 }
 
 /*--------------------------------------------------------------------------------------*/
@@ -3208,7 +3267,7 @@ function _DOALL()
    Parameter1 = 0;
   _EXIT;
  }
- objno = objects.getNextObjectAt(-1, Parameter1);
+ var objno = objects.getNextObjectAt(-1, Parameter1);
  if (objno!=MAX_OBJECT)
  {
     DDB.doallPTR = DDB.condactPTR + 1; //Point to next Condact after DOALL
@@ -3220,7 +3279,7 @@ function _DOALL()
  }
  else 
  {
-    debug('Mal doall');
+    debug('Bad doall', 'error');
     Sysmess(SM8);
     newtext();
     _DONE();
@@ -3250,7 +3309,7 @@ function _ISNOTAT()
 /*--------------------------------------------------------------------------------------*/
 function _WEIGH()
 {
- flags.setFlag(Parameter2, getObjectFullWeight(Parameter1));
+ flags.setFlag(Parameter2, objects.getObjectFullWeight(Parameter1));
  done = true;
 }
 
@@ -3258,7 +3317,7 @@ function _WEIGH()
 function _PUTIN() 
 {
     objects.setReferencedObject(Parameter1);
-    ObjectLocation =objects.getObjectLocation(Parameter1);
+    var ObjectLocation =objects.getObjectLocation(Parameter1);
     if (ObjectLocation == LOC_WORN) 
     {
         Sysmess(SM24); //I can't. I'm wearing the_.
@@ -3304,7 +3363,7 @@ function _NEWTEXT()
 function _TAKEOUT() 
 {
     objects.setReferencedObject(Parameter1);
-    ObjectLocation =objects.getObjectLocation(Parameter1);
+    var ObjectLocation =objects.getObjectLocation(Parameter1);
     if ((ObjectLocation == LOC_WORN) || (ObjectLocation==LOC_CARRIED)) 
     {
         Sysmess(SM45); //I already have the _.
@@ -3351,7 +3410,7 @@ function _TAKEOUT()
     {
         Sysmess(SM27); //"I can't carry any more things.
         newtext();
-        doallPTR = 0;
+        DDB.doallPTR = 0;
         _DONE();
         return;
     }
@@ -3377,10 +3436,10 @@ function _WEIGHT()
   var w = 0;
   for (var i=0;i<DDB.header.numObj;i++)
   {
-   l = objects.getObjectLocation(i);
+    var l = objects.getObjectLocation(i);
    if ((l==LOC_CARRIED) || (l==LOC_WORN))
    {
-    w2 = objects.getObjectFullWeight(i);
+    var w2 = objects.getObjectFullWeight(i);
     if (w + w2 > MAX_FLAG_VALUE)  w =MAX_FLAG_VALUE;  else w +=w2;
    }
   } 
@@ -3405,7 +3464,7 @@ function _INPUT()
     Parameter2 = Parameter2 << 3; //Move the three bits to their position in flag 49
     Parameter2 = Parameter2 & 0x38; //Isolate them: 00111000
     
-    flag49 = flags.getFlag(FTIMEOUT_CONTROL) & 0xC7; //Get flag 49 and clear the three bits affected by INPUT
+    var flag49 = flags.getFlag(FTIMEOUT_CONTROL) & 0xC7; //Get flag 49 and clear the three bits affected by INPUT
     flags.setFlag(FTIMEOUT_CONTROL, flag49 | Parameter2);  //Combine bits
    } 
 
@@ -3482,7 +3541,7 @@ function _PUTO()
 function _NOTDONE()
 {
     done = false;
-    DDB.ConsumeProcess(); //Go to last entry
+    DDB.consumeProcess(); //Go to last entry
     //force failure so we jump to next entry, which happens to be the mark of end of process
     condactResult = false; 
 }
@@ -3491,8 +3550,8 @@ function _NOTDONE()
 function _AUTOP() 
 {
     Parameter2 = Parameter1; //To use it with PUTIN
-    Noun = flags.getFlag(FNOUN);
-    Adject = flags.getFlag(FADJECT);
+    var Noun = flags.getFlag(FNOUN);
+    var Adject = flags.getFlag(FADJECT);
     Parameter1 = objects.getObjectByVocabularyAtLocation(Noun, Adject, LOC_CARRIED);
     if (Parameter1 != MAX_OBJECT) 
     {
@@ -3613,15 +3672,15 @@ function _CENTRE()
 /*--------------------------------------------------------------------------------------*/
 function _EXIT() 
 {
- resetWindows();
- if (Parameter1 = 0) 
+ windows.resetWindows();
+ if (Parameter1 == 0) 
  {
     _CLS;
     $('.goodbye').show();
  } 
- resetWindows();
+ windows.resetWindows();
  flags.resetFlags();
- resetObjects();
+ objects.resetObjects();
  _RESTART();
 }
 
@@ -3705,7 +3764,7 @@ function _COPYOF()
 function _COPYOO()
 {
  // Its like placing objno2 at objno1 location}
- aux = Parameter2;
+ var aux = Parameter2;
  Parameter2 = objects.getObjectLocation(Parameter1);
  Parameter1 = aux;
  _PLACE();
@@ -3715,7 +3774,7 @@ function _COPYOO()
 function _COPYFO()
 {
  //Its like placing objno2 at flagno1
- aux = Parameter2;
+ var aux = Parameter2;
  Parameter2 = flags.getFlag(Parameter1);
  Parameter1 = aux;
  _PLACE();
