@@ -1631,6 +1631,7 @@ function clickHandler(e)
         e.stopPropagation();
         if (!inMORE) DDB.condactPTR++; // Point to next condact
         inANYKEY = inMORE = false;
+        windows.windows[windows.activeWindow].lastPauseLine = 0;
         run(true); // skipToRunCondact = true
     }
 }
@@ -1675,6 +1676,7 @@ function keydownHandler(e)
         e.stopPropagation();
         if (!inMORE) DDB.condactPTR++; // Point to next condact
         inANYKEY = inMORE = false;
+        windows.windows[windows.activeWindow].lastPauseLine = 0;
         run(true); // skipToRunCondact = true
         return;
     }
@@ -1803,8 +1805,6 @@ function pixel(x,y, colour)
     pixelRGB(x, y, colours[colour][0],colours[colour][1], colours[colour][2]);
 }
 
-
-
 function nextChar()
 {
  //Increase X
@@ -1815,23 +1815,22 @@ function nextChar()
     windows.windows[windows.activeWindow].currentX = windows.windows[windows.activeWindow].col * COLUMN_WIDTH;
     windows.windows[windows.activeWindow].currentY = windows.windows[windows.activeWindow].currentY + LINE_HEIGHT;
     //if out of boundary scroll window}
+    windows.lastPrintedIsCR = true;
     if (windows.windows[windows.activeWindow].currentY >= (windows.windows[windows.activeWindow].line + windows.windows[windows.activeWindow].height) * LINE_HEIGHT )  ScrollCurrentWindow();
  }
 }
 
 function writeChar(c)
 {
-    var charsetShift;
+    windows.lastPrintedIsCR = false;
     switch(c)
     {
-        case 0x0E: charsetShift  =128; break; //#g
-        case 0x0F: charsetShift  =0; break; // #t
+        case 0x0E : windows.charsetShift  =128; break; //#g
+        case 0x0F : windows.charsetShift  =0; break; // #t
         case 0x0B : clearCurrentWindow();break; //#b
-        // case 0x0C : { while (!keyPressed()) {}; i = readKey(); };break; //#k //This #k is very hard to support in javascript, so it's not supported
         default:
         {
-            
-            if (windows.windows[windows.activeWindow].currentX + COLUMN_WIDTH >= (windows.windows[windows.activeWindow].col + windows.windows[windows.activeWindow].width) * COLUMN_WIDTH ) 
+            if (windows.windows[windows.activeWindow].currentX + COLUMN_WIDTH > (windows.windows[windows.activeWindow].col + windows.windows[windows.activeWindow].width) * COLUMN_WIDTH ) 
             {
                 nextChar();
                 writeChar(c);
@@ -1848,10 +1847,8 @@ function writeChar(c)
                                                                 else pixel(windows.windows[windows.activeWindow].currentX + j, windows.windows[windows.activeWindow].currentY + i, windows.windows[windows.activeWindow].PAPER);
                     }
                 }
-                
             }
             nextChar();
-            
         }
     } // switch(c)
 }
@@ -1863,17 +1860,75 @@ function StrLenInPixels(Str)
 
 function writeWord(aWord)
 {
-    var Xlimit = (windows.windows[windows.activeWindow].col +  windows.windows[windows.activeWindow].width) * 6; //First pixel out of the window}
+    var Xlimit = (windows.windows[windows.activeWindow].col +  windows.windows[windows.activeWindow].width) * COLUMN_WIDTH; //First pixel out of the window}
     
-    if (StrLenInPixels(aWord) + windows.windows[windows.activeWindow].currentX >= Xlimit) carriageReturn();
-    if  (! (windows.lastPrintedIsCR  && (aWord==' ')) )
+    if (StrLenInPixels(aWord) + windows.windows[windows.activeWindow].currentX > Xlimit) carriageReturn();
+    if  (!windows.lastPrintedIsCR  || (aWord!=' '))
         for (var i = 0; i<aWord.length;i++) writeChar(aWord.charCodeAt(i));
-    windows.lastPrintedIsCR = false;    
 }
+
+function getLastFittingChar(aText) // Given a text, calculates until which character will fit on screen without having to scroll
+{
+    var originalAtext = aText;
+
+    var remainingLines  = windows.windows[windows.activeWindow].height - windows.windows[windows.activeWindow].lastPauseLine ;
+    if (!remainingLines) return 0; // Not a single character will fit
+
+    //Now let's calculate how much text will fit in the remaining space. To do that we will have an array of pixel width per remaining line
+    var remainingPixelsperLine = [];
+    var windowWidth = windows.windows[windows.activeWindow].width * COLUMN_WIDTH;
+    remainingPixelsperLine.push(windows.windows[windows.activeWindow].col * COLUMN_WIDTH + windowWidth - windows.windows[windows.activeWindow].currentX); // push remaining pixels for current line
+    for (var j=0;j<remainingLines-1;j++) remainingPixelsperLine.push(windows.windows[windows.activeWindow].width * COLUMN_WIDTH); // Push full width lines for the rest of lines
+
+    var fittingStr = ''; // The string that will eventually fit
+    
+    for (var currentRemainingline=0; currentRemainingline < remainingPixelsperLine.length ; currentRemainingline++)
+    {
+        var tempStr = aText.substring(0,remainingPixelsperLine[currentRemainingline] / COLUMN_WIDTH + 1); // Get the text that will fit in the current line plus one character      
+        var CRpos = tempStr.indexOf(String.fromCharCode(13));   // If a CR is in the string we shorten the string to the CR
+        if (CRpos != -1) 
+        {
+            aText = aText.substring(CRpos + 1);
+            tempStr = tempStr.substring(0,CRpos);
+            
+            fittingStr = fittingStr + tempStr + String.fromCharCode(13);
+        }
+        else    //Otherwise, we shorten it to the last space
+        {
+            if (tempStr !=  aText) // otherwise, the whole text fits in the current line so our text to be taken is the whole remaining text
+            {
+                if (tempStr.slice(-1) == ' ')  //if the extra character happens to be a space
+                {
+                    tempStr = tempStr.substring(0,tempStr.length - 1);
+                }
+                else    // Otherwise, we look back for the last space, after removing that extra one.
+                {
+                    tempStr = tempStr.substring(0,tempStr.length - 1); // remove extra character
+                    var preserveStr = tempStr;
+                    while ((tempStr!='') && (tempStr.slice(-1)!=' ')) tempStr = tempStr.substring(0,tempStr.length - 1); // Look back for the space
+                    //if (tempStr == '') tempStr = preserveStr; // If no space found, then a very long word is there, and it will be written anyway up to where it fits.
+                }   
+            }
+            // Once we have the text that would actually fit, we add it to the fitting string, and remove it from the original string
+            aText = aText.substring(tempStr.length);
+            fittingStr = fittingStr + tempStr;      
+            
+            if (aText.length==0) break; // If we have no more text to process, we are done
+        }
+    }
+    // return last valid character from aText
+    if (originalAtext == fittingStr) return -1; else return fittingStr.length;
+ }
+
+
+
+
+   
 
 //Writes any text to output
 function writeText(aText, doDebug=true)
 {
+    
     // 1.- Recover the buffer
     aText = writeTextBuffer + aText;
     writeTextBuffer = '';
@@ -1889,8 +1944,16 @@ function writeText(aText, doDebug=true)
 
     // 3.- check if text will fit in remaining non-scroll window
 
-    //FALTA
-
+    var lastFittingChar = getLastFittingChar(aText);
+    if (lastFittingChar!=-1)
+    {
+        writeTextBuffer = aText.substring(lastFittingChar);
+        aText = aText.substring(0, lastFittingChar );
+        inANYKEY = inMORE = true;  // this will make execution stop after whatever condact has called this writeText
+        writeTextDone = done;
+    }
+    
+    
     // 4.- Print what it should be printed now
     if (doDebug) debug(aText, 'text');
     var aWord = '';
@@ -1898,9 +1961,16 @@ function writeText(aText, doDebug=true)
     {
         switch(aText.charCodeAt(i))
         {
-            case 13: writeWord(aWord);aWord='';carriageReturn();break
-            case 32: writeWord(aWord);aWord='';writeWord(' ');break;
-            default: aWord  = aWord + aText.charAt(i); break;
+            case 13: writeWord(aWord);
+                     aWord='';
+                     carriageReturn();
+                     break
+            case 32: writeWord(aWord);
+                     aWord='';
+                     if (!windows.lastPrintedIsCR) writeWord(' '); // if we are not at the end of the line, write the seporator space
+                     break;
+            default: aWord  = aWord + aText.charAt(i); 
+                     break;
         }
     }
     writeWord(aWord);
