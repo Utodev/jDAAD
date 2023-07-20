@@ -1,15 +1,13 @@
 /*FALTA:
 
 TO-DO:
-
 - Timeouts in player input
-- More when too much text printed
 - Make HTML.BAT build script get 6x8.CHR font and convert to font.js, so it's editable like the others
 
-KNOWN BUGS (or features):
-
+KNOWN BUGS:
 - Beep can't sound until player has either clicked or pressed a key. It's a limitation of javascript
   so it can't be solved.
+- Bit 1 of flag 49 (timeout control) is not supported
 
 */
 
@@ -868,9 +866,10 @@ var keyPressTreated = 0;
 
 // Global var for the ReadText functions
 var ticks = 0;
-var TimeoutHappened = false;
-var TimeoutSeconds = 0;
-var TimeoutPreservedOrder = '';
+var timeoutHappened = false;
+var timeoutID = null;
+var timeoutPreservedOrder = '';
+var playerPressedKey = false;
 var saveX = 0;
 var saveY = 0;
 var readTextStr = '';
@@ -884,7 +883,7 @@ var PreserveTimeout = 0;
 
 var condactResult = false;
 var done = false;
-var Parameter1 =  0;
+var Parameter1 = 0;
 var Parameter2 = 0;
 var inPARSE = false;
 var inANYKEY = false;
@@ -1015,7 +1014,7 @@ function run(skipToRunCondact)
 
         //These flags should have specific values that code can use to determine the machine running the DDB
         // so they are being set after every condact to make sure even when modified, their value is restored
-        flags.setFlag(FSCREENMODE, 14 + 128); //Makes sure flag 62 has proper value: mode 14 (JDAAD SCeen) and bit 7 set
+        flags.setFlag(FSCREENMODE, 14 + 128); //Makes sure flag 62 has proper value: mode 14 (JDAAD Screen) and bit 7 set
         flags.setFlag(FMOUSE, 128); //Makes sure flag 29 has "graphics" available set, and the rest is empty}
 
         //Let's run the condact
@@ -1030,13 +1029,14 @@ function run(skipToRunCondact)
         {
             DDB.condactPTR++;
             Parameter1 = DDB.getByte(DDB.condactPTR);
+            debugStr = debugStr + (indirection?'@':'') + Parameter1;
             if (indirection)
             {
-                if (indirection) debugStr = debugStr + '@';
-                Parameter1 = flags.getFlag(Parameter1);
-                
+                var PrevParameter1 = Parameter1;
+                Parameter1 = flags.getFlag(Parameter1);  
+                debugStr += '                 ( @' + PrevParameter1 + ' = ' + Parameter1 + ' )';
             }
-            debugStr = debugStr + Parameter1;
+            
             if (condactTable[opcode].numParams>1) 
             {
                 DDB.condactPTR++;
@@ -1048,6 +1048,8 @@ function run(skipToRunCondact)
         debug('    ' + debugStr, condactStyle);
         //run condact
         condactResult = true;
+        playerPressedKey = false;
+        
         condactTable[opcode].condactRoutine(); //Execute the condact
         if (inPARSE || inANYKEY || inQUIT ||inEND || inSAVE || inLOAD)  return; // get out of main loop as we are now just waiting for keypress 
         //If condact execution failed, go to next entry
@@ -1138,7 +1140,7 @@ function fixSpanishCharacters(str)
 function getCommand(usePrompt)
 {
         inputBuffer = '';
-        if (usePrompt) Sysmess(SM33); //the prompt
+        if (usePrompt) Sysmess(SM33); else writeText(' '); //the prompt
         //When the prompt appears the last pause line of all windows is resetted
         for(var i=0;i<NUM_WINDOWS;i++) windows.windows[i].lastPauseLine = 0;
         inputBuffer = readText(); //fromEvent = false
@@ -1203,9 +1205,9 @@ function getWordByCodeType(aCode, aVocType)
 }
 
 
-function getPlayerOrders()
+function getPlayerOrders(usePrompt)
 {
-    getCommand(true, false); // usePrompt =true, fromCallBack = false
+    getCommand(usePrompt); 
 }
 
 function getPlayerOrdersB()
@@ -1290,10 +1292,14 @@ function parse(Option)
             }
             else if (flags.getFlag(FPROMPT) < DDB.header.numSys) Sysmess(flags.getFlag(FPROMPT));
 
+            
+        
+
             inPARSE=true; // Make the keyboardHanlder active as we will ask for an order
-            getPlayerOrders();
+            getPlayerOrders(true);
             return;
         } 
+
         parseB();
     }
     else  
@@ -1648,6 +1654,7 @@ function keypressHandler(e)
 
 function keydownHandler(e)
 {
+    playerPressedKey = true;
     keyPressTreated = false;
 
     //Save keydown status for each key to be used with INKEY    
@@ -1679,6 +1686,35 @@ function keydownHandler(e)
         windows.windows[windows.activeWindow].lastPauseLine = 0;
         run(true); // skipToRunCondact = true
         return;
+    }
+}
+
+function inputTimeoutHandler()
+{
+    var control = flags.getFlag(FTIMEOUT_CONTROL);
+    if (inPARSE)
+    {
+        if (timeoutID!= null) clearTimeout(timeoutID);
+        // If timeout active in any case (bit 0 cleared), or timeout active only when player hasn't pressed a key (bit 0 set), and player hasn't pressed a key       
+        if (((control & 1) == 0) || (((control & 1) == 1) && (!playerPressedKey))) 
+        {
+            flags.setFlag(FTIMEOUT_CONTROL, flags.getFlag(FTIMEOUT_CONTROL) | 0x80); // Set the timeout happened flag
+            timeoutPreservedOrder = readTextStr;
+            if (timeoutPreservedOrder!='') flags.setFlag(FTIMEOUT_CONTROL, flags.getFlag(FTIMEOUT_CONTROL) | 0x40);
+                                    else flags.setFlag(FTIMEOUT_CONTROL, flags.getFlag(FTIMEOUT_CONTROL) & 0xBF); 
+            inputBuffer = readTextStr = '';
+            carriageReturn(); 
+            inPARSE = false; // Mark we are finishing the interactive part
+            DDB.condactPTR++;
+            run(true);       
+        }
+    }
+    if (inANYKEY)
+    {
+        // we don't check the flag to know if timeout can happen in ANYKEY because the timeout handler is only started in ANYKEY if the bit flag is set
+        inANYKEY = false;
+        DDB.condactPTR++; // Point to next condact
+        run(true); // skipToRunCondact = true
     }
 }
 
@@ -2016,14 +2052,16 @@ function readText()
     /*bits 7, 6 and 5 for FTIMEOUT_CONTROL set*/
     if ((flags.getFlag(FTIMEOUT_CONTROL) & 0xE0) == 0xE0) 
     {
-        readTextStr = TimeoutPreservedOrder;
-        TimeoutPreservedOrder = '';
+        readTextStr = timeoutPreservedOrder;
+        timeoutPreservedOrder = '';
     }
     flags.setFlag(FTIMEOUT_CONTROL, flags.getFlag(FTIMEOUT_CONTROL)& 0x3F); //Clear bits 7 and 6
     writeText(readTextStr+'_', false);
-    TimeoutHappened = false;
-    TimeoutSeconds = flags.getFlag(FTIMEOUT);
-    ticks  = getTicks(); //FALTA: implementar Timeout
+    timeoutHappened = false;
+    if (flags.getFlag(FTIMEOUT)) // Start timeout
+        timeoutID = setTimeout(function() { 
+            inputTimeoutHandler();        
+        }, flags.getFlag(FTIMEOUT)*1000);
     // The main "wait for a key" loop would start here, but we exit to leave things in hands of the keydown handler
 }
 
@@ -2406,7 +2444,7 @@ function _QUIT()
    Sysmess(SM12); // Are you sure? 
    inputBuffer = '';
    inQUIT = true;
-   getPlayerOrders();
+   getPlayerOrders(false);
    
 }
 
@@ -2449,7 +2487,7 @@ function _SAVE()
     Sysmess(SM60); // Type in name of file
     inputBuffer = '';
     inSAVE = true;
-    getPlayerOrders();
+    getPlayerOrders(false);
 }
 
 function _SAVEB() 
@@ -2515,7 +2553,7 @@ function _END()
    //Get first char of SM30, uppercased
    inputBuffer = '';
    inEND = true;
-   getPlayerOrders();
+   getPlayerOrders(false);
    
 }
 
@@ -2552,6 +2590,11 @@ function _OK()
 function _ANYKEY() 
 {
     inANYKEY = true;
+    if (flags.getFlag(FTIMEOUT)) // Timeout duration != 0
+    if ((flags.getFlag(FTIMEOUT_CONTROL) & 4) == 4) // Timeout can happen in ANYKEY
+    timeoutID = setTimeout(function() { 
+        inputTimeoutHandler();        
+    }, flags.getFlag(FTIMEOUT)*1000);
 }
 
 
@@ -3074,13 +3117,14 @@ function _SPACE()
 /*--------------------------------------------------------------------------------------*/
 function _HASAT()
 {
-    condactResult = flags.getFlagBit(59 - Math.floor(Parameter1,8), Parameter1 % 8);
+    condactResult = flags.getFlagBit(59 - Math.floor(Parameter1/8), Parameter1 % 8);
 }
 
 /*--------------------------------------------------------------------------------------*/
 function _HASNAT()
 {
-    condactResult = ! flags.getFlagBit(59 - Math.floor(Parameter1,8), Parameter1 % 8);
+    _HASAT();
+    condactResult = ! condactResult;
 }
 
 /*--------------------------------------------------------------------------------------*/
