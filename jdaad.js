@@ -1,8 +1,4 @@
-/*FALTA:
-
-TO-DO:
-- Timeouts in player input
-- Make HTML.BAT build script get 6x8.CHR font and convert to font.js, so it's editable like the others
+/*
 
 KNOWN BUGS:
 - Beep can't sound until player has either clicked or pressed a key. It's a limitation of javascript
