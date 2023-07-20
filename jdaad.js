@@ -3,8 +3,8 @@
 KNOWN BUGS:
 - Beep can't sound until player has either clicked or pressed a key. It's a limitation of javascript
   so it can't be solved.
-- Bit 1 of flag 49 (timeout control) is not supported
-
+- #k or \k escape code, will act as a "More..." regarding to the timeout flag, so bit 2 will affect it instead of bit 1 (ANYKEY)
+- when stopping because too much text is printed, the system message is not printed (More...)
 */
 
 
@@ -1707,9 +1707,11 @@ function inputTimeoutHandler()
     }
     if (inANYKEY)
     {
+        if (timeoutID!= null) clearTimeout(timeoutID);
         // we don't check the flag to know if timeout can happen in ANYKEY because the timeout handler is only started in ANYKEY if the bit flag is set
-        inANYKEY = false;
-        DDB.condactPTR++; // Point to next condact
+        if (!inMORE) DDB.condactPTR++; // Point to next condact
+        inANYKEY = inMORE = false;
+        windows.windows[windows.activeWindow].lastPauseLine = 0;
         run(true); // skipToRunCondact = true
     }
 }
@@ -1972,6 +1974,11 @@ function writeText(aText, doDebug=true)
         aText = aText.substring(0, sharpKpos);
         inANYKEY = inMORE = true;  // this will make execution stop after whatever condact has called this writeText
         writeTextDone = done;
+        if (flags.getFlag(FTIMEOUT)) // Start timeout
+        if (flags.getFlag(FTIMEOUT_CONTROL) & 0x02) // If timeout is active in More.. (bit 1 set)
+            timeoutID = setTimeout(function() { 
+                inputTimeoutHandler();        
+            }, flags.getFlag(FTIMEOUT)*1000);
     } 
 
     // 3.- check if text will fit in remaining non-scroll window
@@ -1983,6 +1990,11 @@ function writeText(aText, doDebug=true)
         aText = aText.substring(0, lastFittingChar );
         inANYKEY = inMORE = true;  // this will make execution stop after whatever condact has called this writeText
         writeTextDone = done;
+        if (flags.getFlag(FTIMEOUT)) // Start timeout
+        if (flags.getFlag(FTIMEOUT_CONTROL) & 0x02) // If timeout is active in More.. (bit 1 set)
+            timeoutID = setTimeout(function() { 
+                inputTimeoutHandler();        
+            }, flags.getFlag(FTIMEOUT)*1000);
     }
     
     
