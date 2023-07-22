@@ -1493,7 +1493,7 @@ function replaceArticles(str, replace, caps, stopAtDot)
             //una, unos, unas --> la, los, las}
             if ((str.charAt(0).toUpperCase() == 'U') && (str.charAt(1).toUpperCase() == 'N')) 
             {
-                if (caps) newArticle = 'L'; else newArticle = 'L';
+                if (caps) newArticle = 'L'; else newArticle = 'l';
                 return newArticle + str.substring(2);
             }
         }
