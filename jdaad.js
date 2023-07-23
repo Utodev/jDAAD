@@ -1497,20 +1497,9 @@ function replaceArticles(str, replace, caps, stopAtDot)
                 return newArticle + str.substring(2);
             }
         }
-        else // English
+        else //In English, we have to remove the first word, whatever it is (if there are at least two words)
         {
-            
-            //a -> empty string}
-            if ((str.charAt(0).toUpperCase() == 'A') && (str.charAt(1) == ' ')) 
-            {
-                return str.substring(2);
-            }
-        
-            //some -> empty string}
-            if ((str.charAt(0).toUpperCase() == 'S') && (str.charAt(1).toUpperCase() == 'O') && (str.charAt(2).toUpperCase() == 'M') && (str.charAt(3).toUpperCase() == 'E') && (str.charAt(4)==' ')) 
-            {        
-            return str.substring(5);
-            }
+           if (str.indexOf(' ') != -1) str = str.substring(str.indexOf(' ') + 1);
         }
     }//if replace
     return str;  
@@ -2079,7 +2068,7 @@ function readTextB(keyCode)
     if ((keyCode>=32) && (keyCode<=255))
     {
         if ((readTextStr.length + 2) * COLUMN_WIDTH   + saveX  < Xlimit) // +2 because is one more for the new char being added and another one cause the cursor '_'
-        readTextStr += String.fromCharCode(keyCode).toUpperCase() //printable characters
+        readTextStr += String.fromCharCode(keyCode); //printable characters
     }
     else
     if ((keyCode==8) && (readTextStr!=''))
