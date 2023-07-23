@@ -1109,25 +1109,26 @@ function fixSpanishCharacters(str)
   var output = '';
   for (var i=0;i<str.length;i++) 
   {
-        switch(str.charAt(i))
+        var c = str.charAt(i);
+        switch(c)
         {
-        case 'ñ': output += 'Ñ';break;
-        case 'ç': output += 'Ç';break;
+        case 'ñ': c = 'Ñ';break;
+        case 'ç': c = 'Ç';break;
         case 'á':
-        case 'Á': output +='A';break;
+        case 'Á': c ='A';break;
         case 'é':
-        case 'É': output +='E';break;
+        case 'É': c ='E';break;
         case 'í':
-        case 'Í': output +='I';break;
+        case 'Í': c ='I';break;
         case 'ó':
-        case 'Ó': output +='O';break;
+        case 'Ó': c ='O';break;
         case 'ú':
         case 'Ú':
         case 'Ü': 
-        case 'ü': output +='U';break;
+        case 'ü': c ='U';break;
         }
-        if (encodeStr.indexOf(str.charAt(i))!=-1) output += String.fromCharCode(16 + encodeStr.indexOf(str.charAt(i)));
-        else output += str.charAt(i)
+        if (encodeStr.indexOf(c)!=-1) output += String.fromCharCode(16 + encodeStr.indexOf(c));
+        else output += c
     }
     return output; 
 }
@@ -1497,9 +1498,10 @@ function replaceArticles(str, replace, caps, stopAtDot)
                 return newArticle + str.substring(2);
             }
         }
-        else //In English, we have to remove the first word, whatever it is (if there are at least two words)
+        else //In English, we have to remove the first word, whatever it is (if there)
         {
-           if (str.indexOf(' ') != -1) str = str.substring(str.indexOf(' ') + 1);
+            
+           if (str.indexOf(' ') != -1) str = str.substring(str.indexOf(' ')+1);
         }
     }//if replace
     return str;  
