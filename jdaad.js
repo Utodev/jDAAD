@@ -925,26 +925,42 @@ function run(skipToRunCondact)
             if (DDB.doallPTR != 0)
             {
                 debug('In Doall');
-                // Try to get next object at the doall location
-                var nextDoallObjno = objects.getNextObjectAt(flags.getFlag(FDOALL), DDB.doallLocation);
-                //If a valid object found jump back to DOALL entry/condact}
-                if (nextDoallObjno != MAX_OBJECT) 
+
+                do
                 {
-                    DDB.entryPTR = DDB.doallEntryPTR;
-                    DDB.condactPTR =  DDB.doallPTR;
-                    objects.setReferencedObject(nextDoallObjno);
-                    debug('Next DOALL Object:' + nextDoallObjno);
-                    flags.setFlag(FDOALL, nextDoallObjno);
-                    skipToRunCondact = true;
-                    moreDOALL = true;
-                }
-                else  
-                {
-                //If in DOALL but no more objects mark doall inactive and just let 
-                //the process continue and finish normally}
-                debug('No more DOALL Objets');
-                DDB.doallPTR = 0; 
-                }
+                    // Try to get next object at the doall location
+                    var nextDoallObjno = objects.getNextObjectAt(flags.getFlag(FDOALL), DDB.doallLocation);
+                    //If a valid object found jump back to DOALL entry/condact}
+                    if (nextDoallObjno != MAX_OBJECT) 
+                    {
+                        objects.setReferencedObject(nextDoallObjno);
+                        flags.setFlag(FDOALL, nextDoallObjno);
+                        if ((flags.getFlag(FNOUN) == flags.getFlag(FNOUN2)) && ((flags.getFlag(FADJECT) == flags.getFlag(FADJECT2)) || (flags.getFlag(FADJECT) == NO_WORD) || (flags.getFlag(FADJECT2) == NO_WORD))) 
+                        {
+                            debug('"Except" applied to Doall, skipping object');
+                            continue;
+                        }
+
+
+                        DDB.entryPTR = DDB.doallEntryPTR;
+                        DDB.condactPTR =  DDB.doallPTR;
+                        debug('Next DOALL Object:' + nextDoallObjno);
+                        skipToRunCondact = true;
+                        moreDOALL = true;
+                        break;
+                    }
+                    else  
+                    {
+                        //If in DOALL but no more objects mark doall inactive and just let 
+                        //the process continue and finish normally}
+                        debug('No more DOALL Objets');
+                        DDB.doallPTR = 0; 
+                        break;
+                    }
+
+                } while (true);
+
+
             }
             
             if (!moreDOALL)
@@ -3364,30 +3380,47 @@ function _PICTURE()
 /*--------------------------------------------------------------------------------------*/
 function _DOALL() 
 {
- if  (DDB.doallPTR!=0)
- {
-   writeText('Runtime error 4 - Invalid nested DOALL');
-   _ANYKEY;
-   Parameter1 = 0;
-  _EXIT;
- }
- var objno = objects.getNextObjectAt(-1, Parameter1);
- if (objno!=MAX_OBJECT)
- {
-    DDB.doallPTR = DDB.condactPTR + 1; //Point to next Condact after DOALL
-    DDB.doallEntryPTR = DDB.entryPTR;
-    DDB.doallLocation = Parameter1;
-    flags.setFlag(FDOALL,objno);
-    objects.setReferencedObject(objno);
-    done = true;
- }
- else 
- {
-    debug('Bad doall', 'error');
-    Sysmess(SM8);
-    newtext();
-    _DONE();
- } 
+    if  (DDB.doallPTR!=0)
+    {
+    writeText('Runtime error 4 - Invalid nested DOALL');
+    _ANYKEY;
+    Parameter1 = 0;
+    _EXIT;
+    }
+ 
+    var i = -1;
+    do 
+    {
+        var objno = objects.getNextObjectAt(i, Parameter1);
+
+    
+        if (objno!=MAX_OBJECT)
+        {
+            objects.setReferencedObject(objno);
+            flags.setFlag(FDOALL,objno);
+            if ((flags.getFlag(FNOUN) == flags.getFlag(FNOUN2)) && ((flags.getFlag(FADJECT) == flags.getFlag(FADJECT2)) || (flags.getFlag(FADJECT) == NO_WORD) || (flags.getFlag(FADJECT2) == NO_WORD))) 
+                            {
+                                debug('"Except" applied to Doall, skipping object');
+                                i++;
+                                continue;
+                            }
+
+
+            DDB.doallPTR = DDB.condactPTR + 1; //Point to next Condact after DOALL
+            DDB.doallEntryPTR = DDB.entryPTR;
+            DDB.doallLocation = Parameter1;
+            done = true;
+            break;
+        }
+        else 
+        {
+            debug('Bad doall', 'error');
+            Sysmess(SM8);
+            newtext();
+            _DONE();
+            break;
+        } 
+    } while (true);
 }
 
 /*--------------------------------------------------------------------------------------*/
