@@ -1,7 +1,5 @@
 /*
 
-31/7/2023
-
 KNOWN BUGS:
 - Beep can't sound until player has either clicked or pressed a key. It's a limitation of javascript
   so it can't be solved.
@@ -9,8 +7,9 @@ KNOWN BUGS:
 - when stopping because too much text is printed, the system message is not printed (More...)
 */
 
-
 // Constants
+
+const versionDate = '31/7/2023';
 
 // Settings
 const NESTED_DOALL_ENABLED = false;
@@ -1923,6 +1922,13 @@ function getLastFittingChar(aText) // Given a text, calculates until which chara
     
     for (var currentRemainingline=0; currentRemainingline < remainingPixelsperLine.length ; currentRemainingline++)
     {
+        var trailingSpaceRemoved = false;
+        if ((currentRemainingline!=0) && (aText.substring(0,1)==' ')) 
+        {
+            aText = aText.substring(1); // If we are in a new line, and the first character is a space, we remove it
+            trailingSpaceRemoved = true;
+        }
+
         var tempStr = aText.substring(0,remainingPixelsperLine[currentRemainingline] / COLUMN_WIDTH + 1); // Get the text that will fit in the current line plus one character      
         var CRpos = tempStr.indexOf(CR);   // If a CR is in the string we shorten the string to the CR
         if (CRpos != -1) 
@@ -1933,13 +1939,13 @@ function getLastFittingChar(aText) // Given a text, calculates until which chara
             {
                 aText = aText.substring(CRpos);
                 tempStr = tempStr.substring(0,CRpos);
-                fittingStr = fittingStr + tempStr;
+                fittingStr = fittingStr + (trailingSpaceRemoved?' ':'') + tempStr;
             }
             else
             {
                 aText = aText.substring(CRpos + 1);
                 tempStr = tempStr.substring(0,CRpos);
-                fittingStr = fittingStr + tempStr + CR;
+                fittingStr = fittingStr + (trailingSpaceRemoved?' ':'') + tempStr + CR;
             }
             if (aText.length==0) break; // If we have no more text to process, we are done
         }
@@ -1954,14 +1960,12 @@ function getLastFittingChar(aText) // Given a text, calculates until which chara
                 else    // Otherwise, we look back for the last space, after removing that extra one.
                 {
                     tempStr = tempStr.substring(0,tempStr.length - 1); // remove extra character
-                    var preserveStr = tempStr;
                     while ((tempStr!='') && (tempStr.slice(-1)!=' ')) tempStr = tempStr.substring(0,tempStr.length - 1); // Look back for the space
-                    //if (tempStr == '') tempStr = preserveStr; // If no space found, then a very long word is there, and it will be written anyway up to where it fits.
                 }   
             }
             // Once we have the text that would actually fit, we add it to the fitting string, and remove it from the original string
             aText = aText.substring(tempStr.length);
-            fittingStr = fittingStr + tempStr;      
+            fittingStr = fittingStr + (trailingSpaceRemoved?' ':'') + tempStr;      
             if (aText.length==0) break; // If we have no more text to process, we are done
         }
     }
@@ -3957,7 +3961,7 @@ function _RESET()
 
 $(document).ready(function()
 {
-    console.log('jDAAD 1.0 (C) Uto');
+    console.log('jDAAD 1.0 (C) Uto ' + versionDate);
 
     // Handlers
     $(window).resize(function()
