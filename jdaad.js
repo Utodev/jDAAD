@@ -1,5 +1,7 @@
 /*
 
+31/7/2023
+
 KNOWN BUGS:
 - Beep can't sound until player has either clicked or pressed a key. It's a limitation of javascript
   so it can't be solved.
@@ -207,6 +209,10 @@ const   LOC_WORN = 253;
 
 const colours = [ [0x00,0x00,0x00],[0x00,0x00,0xAA], [0x00,0xAA,0x00],[0x00,0xAA,0xAA],[0xAA,0x00,0x00],[0xAA, 0x00, 0xAA], [0xAA, 0x55, 0x00],[0xAA, 0xAA, 0xAA]
                  ,[0x55,0x55,0x55],[0x55,0x55,0xFF], [0x55,0xFF,0x55],[0x55,0xFF,0xFF],[0xFF, 0x55, 0x55],[0xFF,0x55,0xFF], [0xFF, 0xFF, 0x55],[0xFF, 0xFF, 0xFF]];
+
+// Carriage return
+
+const CR = String.fromCharCode(13);
 
 // The condacts
 
@@ -1155,7 +1161,6 @@ function getCommand(usePrompt)
         inputBuffer = '';
         if (usePrompt) Sysmess(SM33); else writeText(' '); //the prompt
         //When the prompt appears the last pause line of all windows is resetted
-        for(var i=0;i<NUM_WINDOWS;i++) windows.windows[i].lastPauseLine = 0;
         inputBuffer = readText(); //fromEvent = false
 }
 
@@ -1238,6 +1243,7 @@ function getPlayerOrdersB()
         condactResult = ! result;
         done = false;
         inPARSE = false; // Mark we are finishing the interactive part
+        for(var i=0;i<NUM_WINDOWS;i++) windows.windows[i].lastPauseLine = 0;
         if (!condactResult) 
         {
             DDB.entryPTR +=4;
@@ -1247,7 +1253,7 @@ function getPlayerOrdersB()
         {
         //otherwise go to next condact
         DDB.condactPTR++;
-        run(true); // true --  go to  RunCondact
+        run(true); // true --  go to  RunCondact      
         }
 
     }
@@ -1602,6 +1608,8 @@ function debug(string, style='normal')
         case 'development': css = 'background: #f00; color: #ffff;  border: 2px fixed black; padding: 10px; border-radius: 10px'; break;
     }
 
+    if (string.substr(string.length - 1) == CR) string +='[CR]';
+
     if (DEBUG_ENABLED) console.log('%c ' + string, css);
 }
 
@@ -1640,7 +1648,7 @@ function clickHandler(e)
         e.stopPropagation();
         if (!inMORE) DDB.condactPTR++; // Point to next condact
         inANYKEY = inMORE = false;
-        windows.windows[windows.activeWindow].lastPauseLine = 0;
+        for(var i=0;i<NUM_WINDOWS;i++) windows.windows[i].lastPauseLine = 0;
         run(true); // skipToRunCondact = true
     }
 }
@@ -1686,7 +1694,7 @@ function keydownHandler(e)
         e.stopPropagation();
         if (!inMORE) DDB.condactPTR++; // Point to next condact
         inANYKEY = inMORE = false;
-        windows.windows[windows.activeWindow].lastPauseLine = 0;
+        for(var i=0;i<NUM_WINDOWS;i++) windows.windows[i].lastPauseLine = 0;
         run(true); // skipToRunCondact = true
         return;
     }
@@ -1708,6 +1716,7 @@ function inputTimeoutHandler()
             inputBuffer = readTextStr = '';
             carriageReturn(); 
             inPARSE = false; // Mark we are finishing the interactive part
+            for(var i=0;i<NUM_WINDOWS;i++) windows.windows[i].lastPauseLine = 0;
             DDB.condactPTR++;
             run(true);       
         }
@@ -1718,7 +1727,7 @@ function inputTimeoutHandler()
         // we don't check the flag to know if timeout can happen in ANYKEY because the timeout handler is only started in ANYKEY if the bit flag is set
         if (!inMORE) DDB.condactPTR++; // Point to next condact
         inANYKEY = inMORE = false;
-        windows.windows[windows.activeWindow].lastPauseLine = 0;
+        for(var i=0;i<NUM_WINDOWS;i++) windows.windows[i].lastPauseLine = 0;
         run(true); // skipToRunCondact = true
     }
 }
@@ -1846,20 +1855,6 @@ function pixel(x,y, colour)
     pixelRGB(x, y, colours[colour][0],colours[colour][1], colours[colour][2]);
 }
 
-function nextChar()
-{
- //Increase X
- windows.windows[windows.activeWindow].currentX = windows.windows[windows.activeWindow].currentX + COLUMN_WIDTH; 
- //If out of boundary increase Y
- if (windows.windows[windows.activeWindow].currentX >= (windows.windows[windows.activeWindow].col + windows.windows[windows.activeWindow].width) * COLUMN_WIDTH )
- {
-    windows.windows[windows.activeWindow].currentX = windows.windows[windows.activeWindow].col * COLUMN_WIDTH;
-    windows.windows[windows.activeWindow].currentY = windows.windows[windows.activeWindow].currentY + LINE_HEIGHT;
-    //if out of boundary scroll window}
-    windows.lastPrintedIsCR = true;
-    if (windows.windows[windows.activeWindow].currentY >= (windows.windows[windows.activeWindow].line + windows.windows[windows.activeWindow].height) * LINE_HEIGHT )  ScrollCurrentWindow();
- }
-}
 
 function writeChar(c)
 {
@@ -1873,7 +1868,7 @@ function writeChar(c)
         {
             if (windows.windows[windows.activeWindow].currentX + COLUMN_WIDTH > (windows.windows[windows.activeWindow].col + windows.windows[windows.activeWindow].width) * COLUMN_WIDTH ) 
             {
-                nextChar();
+                carriageReturn();
                 writeChar(c);
             }
             else
@@ -1889,7 +1884,7 @@ function writeChar(c)
                     }
                 }
             }
-            nextChar();
+            windows.windows[windows.activeWindow].currentX = windows.windows[windows.activeWindow].currentX + COLUMN_WIDTH; 
         }
     } // switch(c)
 }
@@ -1912,8 +1907,11 @@ function getLastFittingChar(aText) // Given a text, calculates until which chara
 {
     var originalAtext = aText;
 
+
     var remainingLines  = windows.windows[windows.activeWindow].height - windows.windows[windows.activeWindow].lastPauseLine ;
     if (!remainingLines) return 0; // Not a single character will fit
+
+    
 
     //Now let's calculate how much text will fit in the remaining space. To do that we will have an array of pixel width per remaining line
     var remainingPixelsperLine = [];
@@ -1926,13 +1924,24 @@ function getLastFittingChar(aText) // Given a text, calculates until which chara
     for (var currentRemainingline=0; currentRemainingline < remainingPixelsperLine.length ; currentRemainingline++)
     {
         var tempStr = aText.substring(0,remainingPixelsperLine[currentRemainingline] / COLUMN_WIDTH + 1); // Get the text that will fit in the current line plus one character      
-        var CRpos = tempStr.indexOf(String.fromCharCode(13));   // If a CR is in the string we shorten the string to the CR
+        var CRpos = tempStr.indexOf(CR);   // If a CR is in the string we shorten the string to the CR
         if (CRpos != -1) 
         {
-            aText = aText.substring(CRpos + 1);
-            tempStr = tempStr.substring(0,CRpos);
-            
-            fittingStr = fittingStr + tempStr + String.fromCharCode(13);
+            // Si es la última línea, ese CR provocaría un scroll que no deseamos, así que cortamos la cadena justo 
+            // antes del CR, y dejamos este para la parte
+            if (currentRemainingline==remainingPixelsperLine.length-1) 
+            {
+                aText = aText.substring(CRpos);
+                tempStr = tempStr.substring(0,CRpos);
+                fittingStr = fittingStr + tempStr;
+            }
+            else
+            {
+                aText = aText.substring(CRpos + 1);
+                tempStr = tempStr.substring(0,CRpos);
+                fittingStr = fittingStr + tempStr + CR;
+            }
+            if (aText.length==0) break; // If we have no more text to process, we are done
         }
         else    //Otherwise, we shorten it to the last space
         {
@@ -1953,7 +1962,6 @@ function getLastFittingChar(aText) // Given a text, calculates until which chara
             // Once we have the text that would actually fit, we add it to the fitting string, and remove it from the original string
             aText = aText.substring(tempStr.length);
             fittingStr = fittingStr + tempStr;      
-            
             if (aText.length==0) break; // If we have no more text to process, we are done
         }
     }
@@ -2006,25 +2014,24 @@ function writeText(aText, doDebug=true)
     
     
     // 4.- Print what it should be printed now
-    if (doDebug) debug(aText, 'text');
     var aWord = '';
     for (var i=0; i < aText.length ; i++)
     {
         switch(aText.charCodeAt(i))
         {
-            case 13: writeWord(aWord);
+            case 13: writeWord(aWord, 'CR');
                      aWord='';
                      carriageReturn();
                      break
-            case 32: writeWord(aWord);
+            case 32: writeWord(aWord, 'SP');
                      aWord='';
-                     if (!windows.lastPrintedIsCR) writeWord(' '); // if we are not at the end of the line, write the seporator space
+                     if (!windows.lastPrintedIsCR) writeWord(' ', 'separator'); // if we are not at the end of the line, write the seporator space
                      break;
             default: aWord  = aWord + aText.charAt(i); 
                      break;
         }
     }
-    writeWord(aWord);
+    writeWord(aWord, 'END');
 }
 
 function PatchStr(Str)
@@ -2110,11 +2117,13 @@ function readTextB(keyCode)
     }
 }
 
+
 function carriageReturn()
 {
     windows.windows[windows.activeWindow].currentX = windows.windows[windows.activeWindow].col * COLUMN_WIDTH;
     windows.windows[windows.activeWindow].currentY = windows.windows[windows.activeWindow].currentY + LINE_HEIGHT;
-    windows.windows[windows.activeWindow].lastPauseLine = windows.windows[windows.activeWindow].lastPauseLine + 1;
+    windows.windows[windows.activeWindow].lastPauseLine ++;
+    
     //if out of boundary scroll window
     if (windows.windows[windows.activeWindow].currentY >= (windows.windows[windows.activeWindow].line + windows.windows[windows.activeWindow].height) *  LINE_HEIGHT) 
      ScrollCurrentWindow();
@@ -2204,7 +2213,7 @@ function RestoreStream()
     if ((flags.getFlag(FTIMEOUT_CONTROL) & 0x10) == 0x10) 
     {
      Sysmess(SM33); //The prompt
-     writeText( patchedStr + String.fromCharCode(13));
+     writeText( patchedStr + CR);
     }
 }
 
@@ -2475,7 +2484,7 @@ function _QUITB()
      condactResult = true;
 
    flags.setFlag(FTIMEOUT, PreserveTimeout);
-   windows.windows[windows.activeWindow].lastPauseLine = 0;
+   for(var i=0;i<NUM_WINDOWS;i++) windows.windows[i].lastPauseLine = 0;
    inputBuffer = '';
    done = true;
    RestoreStream();
@@ -2510,7 +2519,7 @@ function _SAVEB()
     doSave(inputBuffer);
    
     flags.setFlag(FTIMEOUT, PreserveTimeout);
-    windows.windows[windows.activeWindow].lastPauseLine = 0;
+    for(var i=0;i<NUM_WINDOWS;i++) windows.windows[i].lastPauseLine = 0;
     inputBuffer = '';
     done = true;
     RestoreStream();
@@ -2541,7 +2550,7 @@ function _LOADB()
     inputBuffer = '';
     done = true;
     RestoreStream();
-
+    for(var i=0;i<NUM_WINDOWS;i++) windows.windows[i].lastPauseLine = 0;
     if (!condactResult) 
     {
         DDB.entryPTR +=4;
@@ -3304,7 +3313,7 @@ function _SAME()
 function _MES(withCR = false)
 {
     var message = getMessage(DDB.header.messagePos, Parameter1);
-    if (withCR) message += String.fromCharCode(13);
+    if (withCR) message += CR;
     done = true;
     writeText(message);
 }
