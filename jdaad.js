@@ -9,7 +9,7 @@ KNOWN BUGS:
 
 // Constants
 
-const versionDate = '31/7/2023';
+const versionDate = '13/10/2023';
 
 // Settings
 const NESTED_DOALL_ENABLED = false;
@@ -354,14 +354,6 @@ class wordClass
     aType = VOC_ANY;
 }
 
-
-class parserClass
-{
-    constructor()
-    {
-
-    }
-}
 
 class windowClass
 {
@@ -860,6 +852,8 @@ var playerOrder = '';
 var conjunctions = [] ;
 var globalParseOption = 0; // preseves the option given to PARSE calls (PARSE 0 or PARSE 1), so when the run() loops is broken and handler takes control, it can call back with the proper option
 var XmessagePart = 0;
+var isMobileDevice = false;
+var virtualKeys;
 
 var keyBoardStatus = [];
 
@@ -2238,24 +2232,27 @@ function preloadImages()
     }
 }
 
+
+function calculateAspectRatioFit(maxWidth, maxHeight) 
+{
+    var ratio = Math.min(maxWidth / 320, maxHeight / 200);
+
+    return {
+      width: 320 * ratio,
+      height: 200 * ratio
+    };
+  };
+
+
 function resizeScreen()
 {
-    var height = window.innerHeight;
-    var width = window.innerWidth;
-    
-    var chosenHeight = height - 200;
-    var chosenWidth = Math.round(chosenHeight * 4 /3);
-    if (chosenWidth > width)
-    {
-      chosenWidth = width - 100;
-      chosenHeight = Math.round(width * 3 / 4);
-    }
-    $('.wrapper').css('width',chosenWidth + 'px');
-    $('.wrapper').css('height',chosenHeight + 'px');
-    
-    var fontSize = 4.5  * chosenWidth / width;
-    $('body').css('font-size', fontSize + 'vw');
+    var container = document.getElementsByClassName('screenClass')[0];
 
+    if (!isMobileDevice) var size = calculateAspectRatioFit((window.innerWidth * 8 / 10), (window.innerHeight * 8 / 10));
+    else var size = calculateAspectRatioFit((window.innerWidth), (window.innerHeight));
+              
+    container.style.height = size.height + 'px';
+    container.style.width = size.width + 'px';
 }
 
 function listObjects(locno, isLISTAT)
@@ -3971,17 +3968,76 @@ function _RESET()
 }
 
 
+function getVirtualKeyboardKey(key)
+{
+    if (key=='COMMA') return ",";
+    if (key=='DOT') return ".";
+    if (key=='QUOTE') return "\"";
+    if (key=='SPACE') return " ";
+    return key;
+}
+
+
+function initVirtualKeyboard()
+{
+    console.log('Mobile device detected');
+    
+    document.getElementById('screen').classList.remove("screenClass");
+    document.getElementById('screen').classList.add("mobileScreenClass");
+
+    // rearrange          
+    
+    var ratio = window.innerWidth / window.innerHeight;
+
+    //alert('Ratio: ' + ratio);
+    if (ratio>0.70) var scale = 80; else var scale = 100;
+
+    $('#screen').css('width', Math.round(window.innerWidth*scale/100) + 'px');
+    $('#screen').css('height', Math.round(window.innerWidth * scale/100 * 3 / 4) + 'px');
+    
+
+
+    var screenHeight = document.getElementById('screen').style.height;
+    screenHeight = screenHeight.substring(0, screenHeight.length - 2); 
+    screenHeight = parseInt(screenHeight) + 30;
+    screenHeight += 'px';
+
+    $('#virtualKeyboardDAAD').css('position', 'relative');
+    $('#virtualKeyboardDAAD').css('top', screenHeight); 
+    $('#virtualKeyboardDAAD').show();
+
+    // Set handlers
+
+    virtualKeys = Array.from(window.document.querySelectorAll('.key'));
+    console.log(virtualKeys);
+
+    virtualKeys.forEach(function(key) 
+    {
+        key.addEventListener('touchstart', function(e) {
+            e.stopImmediatePropagation();
+            var myevent = new KeyboardEvent('keydown', {"key": getVirtualKeyboardKey(e.target.id)});
+            keydownHandler(myevent);
+        });
+        key.addEventListener('touchend', function(e) {
+            e.stopImmediatePropagation();
+            var myevent = new KeyboardEvent('keyup', {"key": getVirtualKeyboardKey(e.target.id)});
+            keyupHandler(myevent);
+        });      
+
+
+    });
+}
+
 // Main
 
 $(document).ready(function()
 {
-    console.log('jDAAD 1.0 (C) Uto ' + versionDate);
+    console.log('jDAAD 1.1 (C) Uto ' + versionDate);
 
+
+    
     // Handlers
-    $(window).resize(function()
-    {
-        resizeScreen();
-    });
+
 
     
     $(document).keydown(function(e) {
@@ -3998,11 +4054,25 @@ $(document).ready(function()
         clickHandler(e);
     });
 
+    $(window).resize(function()
+    {
+        resizeScreen();
+    });
+
+    
+	  
+    // Virtual keyboard initialization
+        
 
     paper = document.getElementById('paper').getContext('2d', { willReadFrequently: true });
-
-    // Init game  
+    
     resizeScreen();  
+    // Init game  
+    isMobileDevice = ('ontouchstart' in document.documentElement);
+    if (isMobileDevice) initVirtualKeyboard();
+    
+
+    
     flags.resetFlags();         //Restores flags initial value
     objects.resetObjects();     //Restore objects to "initially at" locations
     windows.resetWindows();     //Clears all windows setup
