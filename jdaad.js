@@ -3974,7 +3974,7 @@ function getVirtualKeyboardKey(key)
     if (key=='DOT') return ".";
     if (key=='QUOTE') return "\"";
     if (key=='SPACE') return " ";
-    if (key>='A' && key<='Z') return String.fromCharCode(key.charCodeAt(0) + 32);
+    if (key.length==1 && key>='A' && key<='Z') return String.fromCharCode(key.charCodeAt(0) + 32);
     if (key=='Ñ') return "ñ";
     return key;
 }
