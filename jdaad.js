@@ -1,10 +1,7 @@
 /*
-
 KNOWN BUGS:
 - Beep can't sound until player has either clicked or pressed a key. It's a limitation of javascript
   so it can't be solved.
-- #k or \k escape code, will act as a "More..." regarding to the timeout flag, so bit 2 will affect it instead of bit 1 (ANYKEY)
-- when stopping because too much text is printed, the system message is not printed (More...)
 */
 
 // Constants
@@ -3988,17 +3985,13 @@ function initVirtualKeyboard()
     document.getElementById('screen').classList.add("mobileScreenClass");
 
     // rearrange          
-    
     var ratio = window.innerWidth / window.innerHeight;
 
-    //alert('Ratio: ' + ratio);
     if (ratio>0.70) var scale = 80; else var scale = 100;
 
     $('#screen').css('width', Math.round(window.innerWidth*scale/100) + 'px');
     $('#screen').css('height', Math.round(window.innerWidth * scale/100 * 3 / 4) + 'px');
     
-
-
     var screenHeight = document.getElementById('screen').style.height;
     screenHeight = screenHeight.substring(0, screenHeight.length - 2); 
     screenHeight = parseInt(screenHeight) + 30;
@@ -4007,6 +4000,7 @@ function initVirtualKeyboard()
     $('#virtualKeyboardDAAD').css('position', 'relative');
     $('#virtualKeyboardDAAD').css('top', screenHeight); 
     $('#virtualKeyboardDAAD').show();
+    $('#scanlines').hide();
 
     // Set handlers
 
