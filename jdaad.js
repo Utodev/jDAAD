@@ -30,7 +30,7 @@ const END_OF_CONDACTS_MARK = 0xFF;
 const END_OF_CONNECTIONS_MARK = 0xFF;
 const NUM_LOCATIONS = 256;
 const MAX_LOCATION = NUM_LOCATIONS -1;
-const LAST_CONVERTIBLE_NOUN=19; //Nouns convertible to verb in absence of verb. i.e "NORTH"
+const LAST_CONVERTIBLE_NOUN=39; //Nouns convertible to verb in absence of verb. i.e "NORTH"
 const LAST_PROPER_NOUN=50;
 const MAX_CONDACTS = 128;
 
@@ -861,8 +861,6 @@ var timeoutHappened = false;
 var timeoutID = null;
 var timeoutPreservedOrder = '';
 var playerPressedKey = false;
-var saveX = 0;
-var saveY = 0;
 var readTextStr = '';
 var inputTakenFromPlayer = false;
 
@@ -1081,6 +1079,14 @@ function run(skipToRunCondact)
 // Aux functions
 
 
+function getStringAsBytes(aText)
+{
+    var AtextDebug = '';
+    for(var i=0; i < aText.length ; i++) AtextDebug += aText.charCodeAt(i) + ' ';
+    return AtextDebug;
+    
+}
+
 String.prototype.hexEncode = function(){
     var hex, i;
 
@@ -1228,9 +1234,9 @@ function getWordByCodeType(aCode, aVocType)
 }
 
 
-function getPlayerOrders()
+function getPlayerOrders(maxLength)
 {
-    getCommand(); 
+    getCommand(maxLength); 
 }
 
 function getPlayerOrdersB()
@@ -1318,7 +1324,7 @@ function parse(Option)
             }
             else if (flags.getFlag(FPROMPT) < DDB.header.numSys) Sysmess(flags.getFlag(FPROMPT));
             
-            getPlayerOrders();
+            getPlayerOrders(-1);
             return;
         } 
 
@@ -1457,11 +1463,10 @@ function parseEnd()
     //Convertible nouns
     if (globalParseOption == 0) // Nouns are not converted if PARSE 1 is called in original interpreters
     if ((flags.getFlag(FVERB)==NO_WORD) && (flags.getFlag(FNOUN)<=LAST_CONVERTIBLE_NOUN) )
-    {
         flags.setFlag(FVERB, flags.getFlag(FNOUN));
-        flags.setFlag(FNOUN, NO_WORD);
-    }
-
+        //Note: flag fNoun is not altered, when converting noun to verb original DAAD just copies noun to verb,
+        //    so both verb and noun has same code
+         
     //Missing verb but present noun, replace with previous verb}
     if (!inputTakenFromPlayer)  //If the current sentece came from buffer
     if ((flags.getFlag(FVERB)==NO_WORD) && (flags.getFlag(FNOUN)!=NO_WORD) && (previousVerb!=NO_WORD))  flags.setFlag(FVERB, previousVerb);
@@ -1583,6 +1588,7 @@ function getMessageInternal(tableOffset, messageNumber)
         aByte = DDB.getByte(ptr);
     }   
     debug(workStr, 'text');
+    debug(getStringAsBytes(workStr), 'text');
     return workStr;
 }
 
@@ -1883,6 +1889,7 @@ function StrLenInPixels(Str)
 
 function writeWord(aWord)
 {
+    debug('WRITE WORD [' + aWord + '] currentY: ' + windows.windows[windows.activeWindow].currentY + ' currentX: ' + windows.windows[windows.activeWindow].currentX, 'development');
     var Xlimit = (windows.windows[windows.activeWindow].col +  windows.windows[windows.activeWindow].width) * COLUMN_WIDTH; //First pixel out of the window}
     
     if (StrLenInPixels(aWord) + windows.windows[windows.activeWindow].currentX > Xlimit) carriageReturn();
@@ -1967,10 +1974,9 @@ function getLastFittingChar(aText) // Given a text, calculates until which chara
    
 
 //Writes any text to output
-function writeText(aText, doDebug=true)
-{
-    debug('writeText IN ("' + aText + '") X: ' + windows.windows[windows.activeWindow].currentX + ' Y: ' + windows.windows[windows.activeWindow].currentY);
-     
+function writeText(aText)
+{   
+    debug('currentY: ' + windows.windows[windows.activeWindow].currentY + ' currentX: ' + windows.windows[windows.activeWindow].currentX, 'development'); 
     // 1.- Recover the buffer
     aText = writeTextBuffer + aText;
     writeTextBuffer = '';
@@ -2004,7 +2010,10 @@ function writeText(aText, doDebug=true)
                 inputTimeoutHandler();        
             }, flags.getFlag(FTIMEOUT)*1000);
     }
+
     
+    debug(getStringAsBytes(aText), 'text');
+
     
     // 4.- Print what it should be printed now
     var aWord = '';
@@ -2025,7 +2034,6 @@ function writeText(aText, doDebug=true)
         }
     }
     writeWord(aWord);
-    debug('writeText OUT ("' + aText + '") X: ' + windows.windows[windows.activeWindow].currentX + ' Y: ' + windows.windows[windows.activeWindow].currentY);
 }
 
 function PatchStr(Str)
@@ -2063,8 +2071,7 @@ function readText(thePrompt)
 {
     
     readTextStr = thePrompt;
-    saveX  =windows.windows[windows.activeWindow].currentX;
-    saveY  =windows.windows[windows.activeWindow].currentY;
+    
 
     /*if timeout last frame, and there is text to recover, and we should recover*/
     /*bits 7, 6 and 5 for FTIMEOUT_CONTROL set*/
@@ -2074,7 +2081,7 @@ function readText(thePrompt)
         timeoutPreservedOrder = '';
     }
     flags.setFlag(FTIMEOUT_CONTROL, flags.getFlag(FTIMEOUT_CONTROL)& 0x3F); //Clear bits 7 and 6
-    writeText(readTextStr+'_', false);
+    writeText(readTextStr + '_');
     timeoutHappened = false;
     if (flags.getFlag(FTIMEOUT)) // Start timeout
         timeoutID = setTimeout(function() { 
@@ -2087,31 +2094,35 @@ function readText(thePrompt)
 
 function readTextB(key)
 {
-
     var keyCode = getKeyCodeFromKey(key);
     var thePrompt = getMessage(DDB.header.sysmessPos, SM33) //The prompt
 
     var Xlimit = (windows.windows[windows.activeWindow].col +  windows.windows[windows.activeWindow].width) * COLUMN_WIDTH; //First pixel out of the window
     if ((keyCode>=32) && (keyCode<=255))
     {
-        if ((readTextStr.length + 2) * COLUMN_WIDTH   + saveX  < Xlimit) // +2 because is one more for the new char being added and another one cause the cursor '_'
+        if ((readTextStr.length + 2) * COLUMN_WIDTH  < Xlimit) // +2 because is one more for the new char being added and another one cause the cursor '_'
         readTextStr += String.fromCharCode(keyCode); //printable characters
+        patchedStr = PatchStr(readTextStr);
+        windows.windows[windows.activeWindow].currentX = windows.windows[windows.activeWindow].currentX - COLUMN_WIDTH; // Move the cursor back
+        writeWord(String.fromCharCode(keyCode) + '_');
+        
     }
     else
     if ((keyCode==8) && (readTextStr!=thePrompt))
     {
-        clearWindow(saveX + (readTextStr.length)* COLUMN_WIDTH, saveY, COLUMN_WIDTH, LINE_HEIGHT , windows.windows[windows.activeWindow].PAPER);
+        clearWindow((readTextStr.length - 1) * COLUMN_WIDTH , windows.windows[windows.activeWindow].currentY,  COLUMN_WIDTH, LINE_HEIGHT, windows.windows[windows.activeWindow].PAPER);
         readTextStr = readTextStr.slice(0, -1);
+        patchedStr = PatchStr(readTextStr);
+        windows.windows[windows.activeWindow].currentX = windows.windows[windows.activeWindow].currentX - COLUMN_WIDTH * 2; // Move the cursor back 
+        writeWord('_');
     }
 
-    windows.windows[windows.activeWindow].currentX = saveX;
-    windows.windows[windows.activeWindow].currentY = saveY;
-    patchedStr = PatchStr(readTextStr);
-    writeText(patchedStr + '_', false);
+    
+
     if ((keyCode==13) && (readTextStr!=''))
     {
         // Remove the cursor
-        clearWindow(saveX + readTextStr.length * COLUMN_WIDTH ,  saveY, COLUMN_WIDTH, LINE_HEIGHT , windows.windows[windows.activeWindow].PAPER); 
+        clearWindow((readTextStr.length - 1) * COLUMN_WIDTH ,  windows.windows[windows.activeWindow].currentY, COLUMN_WIDTH, LINE_HEIGHT , windows.windows[windows.activeWindow].PAPER); 
         carriageReturn();
         // Ok, now we have the content of the text readed. Now, depending on the condact that asked for a text to be read (PARSE, QUIT or END), we 
         // need to return to the main loop in a different way
@@ -2123,6 +2134,7 @@ function readTextB(key)
 
 function carriageReturn()
 {
+    debug('CARRIAGE RETURN', 'development');
     windows.windows[windows.activeWindow].currentX = windows.windows[windows.activeWindow].col * COLUMN_WIDTH;
     windows.windows[windows.activeWindow].currentY = windows.windows[windows.activeWindow].currentY + LINE_HEIGHT;
     windows.windows[windows.activeWindow].lastPauseLine ++;
@@ -2155,7 +2167,7 @@ function reconfigureWindow()
 //Scrolls currently selected window 1 line up}
 function ScrollCurrentWindow()
 {
-
+    debug('SCROLLING WINDOW', 'development');
     var win = windows.windows[windows.activeWindow];
     var img = paper.getImageData(win.col * COLUMN_WIDTH, (win.line+1) * LINE_HEIGHT, win.width * COLUMN_WIDTH, (win.height-1) * LINE_HEIGHT);
     clearWindow(win.col * COLUMN_WIDTH, (win.line+win.height-1) * LINE_HEIGHT, win.width * COLUMN_WIDTH, LINE_HEIGHT, win.PAPER);
@@ -2460,6 +2472,7 @@ function _SFX()
 /*--------------------------------------------------------------------------------------*/
 function _DESC()
 {
+  if (Parameter1 = LOC_HERE) Parameter1 = flags.getFlag(FPLAYER);
   writeText(getMessage(DDB.header.locationPos, Parameter1)); 
   done = true;
 }
@@ -2474,7 +2487,7 @@ function _QUIT()
    Sysmess(SM12); // Are you sure? 
    inputBuffer = '';
    inQUIT = true;
-   getPlayerOrders(false);
+   getPlayerOrders(1);
    
 }
 
@@ -3408,6 +3421,7 @@ function _DOALL()
     _EXIT;
     }
  
+    if (Parameter1 = LOC_HERE) Parameter1 = flags.getFlag(FPLAYER);
     var i = -1;
     do 
     {
@@ -3474,6 +3488,7 @@ function _WEIGH()
 /*--------------------------------------------------------------------------------------*/
 function _PUTIN() 
 {
+    if (Parameter1 = LOC_HERE) Parameter1 = flags.getFlag(FPLAYER);
     objects.setReferencedObject(Parameter1);
     var ObjectLocation =objects.getObjectLocation(Parameter1);
     if (ObjectLocation == LOC_WORN) 
@@ -3520,6 +3535,7 @@ function _NEWTEXT()
 /*--------------------------------------------------------------------------------------*/
 function _TAKEOUT() 
 {
+    if (Parameter1 = LOC_HERE) Parameter1 = flags.getFlag(FPLAYER);
     objects.setReferencedObject(Parameter1);
     var ObjectLocation =objects.getObjectLocation(Parameter1);
     if ((ObjectLocation == LOC_WORN) || (ObjectLocation==LOC_CARRIED)) 
@@ -3533,7 +3549,7 @@ function _TAKEOUT()
     if (ObjectLocation == flags.getFlag(FPLAYER)) 
     {
         Sysmess(SM49); //The _ isn't in the
-        writeText(getMessageOTX( Parameter2, true, false, true), false);
+        writeText(getMessageOTX( Parameter2, true, false, true));
         Sysmess(SM51);//.
         newtext();
         _DONE();
@@ -3544,7 +3560,7 @@ function _TAKEOUT()
     {
         Sysmess(SM52); //There isn't one of those in the
         _SPACE();
-        writeText(getMessageOTX( Parameter2, true, false, true), false);
+        writeText(getMessageOTX( Parameter2, true, false, true));
         Sysmess(SM51);//.
         newtext();
         _DONE();
@@ -3707,6 +3723,7 @@ function _NOTDONE()
 /*--------------------------------------------------------------------------------------*/
 function _AUTOP() 
 {
+    if (Parameter1 = LOC_HERE) Parameter1 = flags.getFlag(FPLAYER);
     Parameter2 = Parameter1; //To use it with PUTIN
     var Noun = flags.getFlag(FNOUN);
     var Adject = flags.getFlag(FADJECT);
@@ -3742,7 +3759,7 @@ function _AUTOP()
 /*--------------------------------------------------------------------------------------*/
 function _AUTOT() 
 {
-
+    if (Parameter1 = LOC_HERE) Parameter1 = flags.getFlag(FPLAYER);
     Parameter2 = Parameter1; //To use it with TAKEOUT
     var Noun = flags.getFlag(FNOUN);
     var Adject = flags.getFlag(FADJECT);
