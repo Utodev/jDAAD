@@ -1079,14 +1079,6 @@ function run(skipToRunCondact)
 // Aux functions
 
 
-function getStringAsBytes(aText)
-{
-    var AtextDebug = '';
-    for(var i=0; i < aText.length ; i++) AtextDebug += aText.charCodeAt(i) + ' ';
-    return AtextDebug;
-    
-}
-
 String.prototype.hexEncode = function(){
     var hex, i;
 
@@ -1234,9 +1226,9 @@ function getWordByCodeType(aCode, aVocType)
 }
 
 
-function getPlayerOrders(maxLength)
+function getPlayerOrders()
 {
-    getCommand(maxLength); 
+    getCommand(); 
 }
 
 function getPlayerOrdersB()
@@ -1324,7 +1316,7 @@ function parse(Option)
             }
             else if (flags.getFlag(FPROMPT) < DDB.header.numSys) Sysmess(flags.getFlag(FPROMPT));
             
-            getPlayerOrders(-1);
+            getPlayerOrders();
             return;
         } 
 
@@ -1588,7 +1580,6 @@ function getMessageInternal(tableOffset, messageNumber)
         aByte = DDB.getByte(ptr);
     }   
     debug(workStr, 'text');
-    debug(getStringAsBytes(workStr), 'text');
     return workStr;
 }
 
@@ -1889,7 +1880,6 @@ function StrLenInPixels(Str)
 
 function writeWord(aWord)
 {
-    debug('WRITE WORD [' + aWord + '] currentY: ' + windows.windows[windows.activeWindow].currentY + ' currentX: ' + windows.windows[windows.activeWindow].currentX, 'development');
     var Xlimit = (windows.windows[windows.activeWindow].col +  windows.windows[windows.activeWindow].width) * COLUMN_WIDTH; //First pixel out of the window}
     
     if (StrLenInPixels(aWord) + windows.windows[windows.activeWindow].currentX > Xlimit) carriageReturn();
@@ -1976,7 +1966,6 @@ function getLastFittingChar(aText) // Given a text, calculates until which chara
 //Writes any text to output
 function writeText(aText)
 {   
-    debug('currentY: ' + windows.windows[windows.activeWindow].currentY + ' currentX: ' + windows.windows[windows.activeWindow].currentX, 'development'); 
     // 1.- Recover the buffer
     aText = writeTextBuffer + aText;
     writeTextBuffer = '';
@@ -2012,8 +2001,7 @@ function writeText(aText)
     }
 
     
-    debug(getStringAsBytes(aText), 'text');
-
+    
     
     // 4.- Print what it should be printed now
     var aWord = '';
@@ -2134,7 +2122,6 @@ function readTextB(key)
 
 function carriageReturn()
 {
-    debug('CARRIAGE RETURN', 'development');
     windows.windows[windows.activeWindow].currentX = windows.windows[windows.activeWindow].col * COLUMN_WIDTH;
     windows.windows[windows.activeWindow].currentY = windows.windows[windows.activeWindow].currentY + LINE_HEIGHT;
     windows.windows[windows.activeWindow].lastPauseLine ++;
@@ -2167,7 +2154,6 @@ function reconfigureWindow()
 //Scrolls currently selected window 1 line up}
 function ScrollCurrentWindow()
 {
-    debug('SCROLLING WINDOW', 'development');
     var win = windows.windows[windows.activeWindow];
     var img = paper.getImageData(win.col * COLUMN_WIDTH, (win.line+1) * LINE_HEIGHT, win.width * COLUMN_WIDTH, (win.height-1) * LINE_HEIGHT);
     clearWindow(win.col * COLUMN_WIDTH, (win.line+win.height-1) * LINE_HEIGHT, win.width * COLUMN_WIDTH, LINE_HEIGHT, win.PAPER);
@@ -2487,7 +2473,7 @@ function _QUIT()
    Sysmess(SM12); // Are you sure? 
    inputBuffer = '';
    inQUIT = true;
-   getPlayerOrders(1);
+   getPlayerOrders();
    
 }
 
@@ -2530,7 +2516,7 @@ function _SAVE()
     Sysmess(SM60); // Type in name of file
     inputBuffer = '';
     inSAVE = true;
-    getPlayerOrders(false);
+    getPlayerOrders();
 }
 
 function _SAVEB() 
@@ -2596,7 +2582,7 @@ function _END()
    //Get first char of SM30, uppercased
    inputBuffer = '';
    inEND = true;
-   getPlayerOrders(false);
+   getPlayerOrders();
    
 }
 
