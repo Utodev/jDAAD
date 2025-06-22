@@ -2110,7 +2110,7 @@ function readTextB(key)
     if ((keyCode==13) && (readTextStr!=''))
     {
         // Remove the cursor
-        clearWindow((readTextStr.length - 1) * COLUMN_WIDTH ,  windows.windows[windows.activeWindow].currentY, COLUMN_WIDTH, LINE_HEIGHT , windows.windows[windows.activeWindow].PAPER); 
+        clearWindow((readTextStr.length) * COLUMN_WIDTH ,  windows.windows[windows.activeWindow].currentY, COLUMN_WIDTH, LINE_HEIGHT , windows.windows[windows.activeWindow].PAPER); 
         carriageReturn();
         // Ok, now we have the content of the text readed. Now, depending on the condact that asked for a text to be read (PARSE, QUIT or END), we 
         // need to return to the main loop in a different way
@@ -3295,7 +3295,7 @@ function _PARSE()
 /*--------------------------------------------------------------------------------------*/
 function _LISTAT()
 {
-    if (Parameter1 = LOC_HERE) Parameter1 = flags.getFlag(FPLAYER);
+    if (Parameter1 == LOC_HERE) Parameter1 = flags.getFlag(FPLAYER);
     listObjects(Parameter1, true); 
     done = true;
 }
