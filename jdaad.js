@@ -1,3 +1,5 @@
+
+var jarl = false;
 /*
 KNOWN BUGS:
 - Beep can't sound until player has either clicked or pressed a key. It's a limitation of javascript
@@ -1005,6 +1007,9 @@ function run(skipToRunCondact)
 
     RunCondact: while (true)
     {
+        if (jarl){
+            console.log("STEP Window X:" + windows.windows[windows.activeWindow].currentX + " Y:" + windows.windows[windows.activeWindow].currentY);
+        }
         skipToRunCondact = false;
 
         if (!inINKEY)
@@ -1018,6 +1023,7 @@ function run(skipToRunCondact)
                     writeText('');
                     if (inMORE) return; // If still more text to write, get out from run() as we are in More...
                 }
+                DDB.condactPTR++;
                 // If the text pending to write was part of the PARSE, SAVE, LOAD etc. text output, get out of run() as we are still waiting for player orders
                 if (inQUIT || inEND || inSAVE || inLOAD || inPARSE) return;
                 done =false;
@@ -1073,6 +1079,9 @@ function run(skipToRunCondact)
             condactResult = true;
             playerPressedKey = false;
             condactTable[opcode].condactRoutine(); //Execute the condact
+            if (jarl){
+                console.log("STEP After Condact Window X:" + windows.windows[windows.activeWindow].currentX + " Y:" + windows.windows[windows.activeWindow].currentY);
+            }
             if (inPARSE || inANYKEY || inQUIT ||inEND || inSAVE || inLOAD || inINKEY)  return; // get out of main loop as we are now just waiting for keypress (or waiting for a key event in the case of inINKEY)
         } else inINKEY=false;
         //If condact execution failed, go to next entry
@@ -1781,8 +1790,11 @@ function Printat(line, col)
 {
     if ((line < windows.windows[windows.activeWindow].height) && (col < windows.windows[windows.activeWindow].width))
     {
-        windows.windows[windows.activeWindow].CurrentY = line * LINE_HEIGHT;
-        windows.windows[windows.activeWindow].CurrentX = col * COLUMN_WIDTH;
+        windows.windows[windows.activeWindow].currentY = line * LINE_HEIGHT;
+        windows.windows[windows.activeWindow].currentX = col * COLUMN_WIDTH;
+        jarl  =true;
+        console.log('Printat L:' + line + ' C:' + col + ' X:' + windows.windows[windows.activeWindow].currentX + ' Y:' + windows.windows[windows.activeWindow].currentY);
+        console.log('Active window:' + windows.activeWindow);
     }
    
 }
@@ -1795,8 +1807,8 @@ function Tab(col)
 
 function SaveAt()
 {
-    windows.windows[windows.activeWindow].BackupCurrentY = windows.windows[windows.activeWindow].currentY;
-    windows.windows[windows.activeWindow].BackupCurrentX = windows.windows[windows.activeWindow].CurrentX;
+    windows.windows[windows.activeWindow].backupCurrentY = windows.windows[windows.activeWindow].currentY;
+    windows.windows[windows.activeWindow].backupCurrentX = windows.windows[windows.activeWindow].currentX;
 }
 
 function BackAt()
@@ -1890,6 +1902,11 @@ function writeChar(c)
             }
             else
             {
+                if (jarl) 
+                {
+                    console.log('X:' + windows.windows[windows.activeWindow].currentX + ' Y:' + windows.windows[windows.activeWindow].currentY + ' Char:' + String.fromCharCode(c));                                      
+                    console.log('Active window:' + windows.activeWindow);
+                }
                 for (var i=0;i<8;i++)
                 {
                     var scan = font[(c + windows.charsetShift) % 256 * 8 + i];  //Get definition for this scanline
@@ -2131,7 +2148,7 @@ function readTextB(key)
     else
     if ((keyCode==8) && (readTextStr!=thePrompt))
     {
-        clearWindow((readTextStr.length) * COLUMN_WIDTH , windows.windows[windows.activeWindow].currentY,  COLUMN_WIDTH, LINE_HEIGHT, windows.windows[windows.activeWindow].PAPER);
+        clearWindow(windows.windows[windows.activeWindow].currentX - COLUMN_WIDTH, windows.windows[windows.activeWindow].currentY,  COLUMN_WIDTH, LINE_HEIGHT, windows.windows[windows.activeWindow].PAPER);
         readTextStr = readTextStr.slice(0, -1);
         patchedStr = PatchStr(readTextStr);
         windows.windows[windows.activeWindow].currentX = windows.windows[windows.activeWindow].currentX - COLUMN_WIDTH * 2; // Move the cursor back 
@@ -2146,7 +2163,7 @@ function readTextB(key)
         if (inputBuffer.length)
         {
             // Remove the cursor
-            clearWindow((readTextStr.length) * COLUMN_WIDTH ,  windows.windows[windows.activeWindow].currentY, COLUMN_WIDTH, LINE_HEIGHT , windows.windows[windows.activeWindow].PAPER); 
+            clearWindow(windows.windows[windows.activeWindow].currentX - COLUMN_WIDTH, windows.windows[windows.activeWindow].currentY,  COLUMN_WIDTH, LINE_HEIGHT, windows.windows[windows.activeWindow].PAPER);
             carriageReturn();
             // Ok, now we have the content of the text readed. Now, depending on the condact that asked for a text to be read (PARSE, QUIT or END), we 
             // need to return to the main loop in a different way
@@ -2302,6 +2319,7 @@ function resizeScreen()
 
 function listObjects(locno, isLISTAT)
 {
+    var result = '';
     var count =objects.getObjectCountAt(locno);
     var continuousListing = (flags.getFlag(FOBJECT_PRINT_FLAGS) & 64) != 0;
     var listed = 0;
@@ -2312,33 +2330,33 @@ function listObjects(locno, isLISTAT)
        
        if (!isLISTAT) 
        {
-        Sysmess(SM1); //I can also see: (Only for LISTOBJ)
-        if (!continuousListing)  _NEWLINE();
+        result = getMessage(DDB.header.sysmessPos, SM1);  //I can also see: (Only for LISTOBJ)
+        if (!continuousListing) result += CR;
        }
    
        for(var i=0; i < DDB.header.numObj; i++)
        {
            if (objects.getObjectLocation(i) == locno) 
            {
-               writeText(getMessageOTX(i, false, false, continuousListing));
+               result += getMessageOTX(i, false, false, continuousListing);
                listed++;
                if (continuousListing)
                { 
-                   if (listed == count) Sysmess(SM48);  // .
-                   else if (listed == count - 1)  Sysmess(SM47); // "and"
-                   else Sysmess(SM46); // , 
+                   if (listed ==  count) result += getMessage(DDB.header.sysmessPos, SM48);  // .
+                   else if (listed == count - 1)   result += getMessage(DDB.header.sysmessPos, SM47); // "and"
+                   else  result += getMessage(DDB.header.sysmessPos, SM46); // , 
                }
-               else _NEWLINE();
+               else result += CR;
            } 
         }  
     }
     else
     { //if no objects at the location
         flags.setFlag(FOBJECT_PRINT_FLAGS, flags.getFlag(FOBJECT_PRINT_FLAGS) & 0x7F); //Clear bit 7
-        if  (isLISTAT) Sysmess(SM53); //"Nothing"
+
+        if  (isLISTAT) result += getMessage(DDB.header.sysmessPos, SM53); //"Nothing"
     }
-    
-   
+   return result;
 }
 
 
@@ -2517,7 +2535,7 @@ function _SFX()
     // Stops loop if enabled, parameter2 is irrelevant
     case 8: StopSound(false);break;
 
-    // PlaysFLI file, no repeat
+    // PlayMP4 file, no repeat
     case 9: {
         var SaveMouse = activeMouse;
         if (SaveMouse) hideMouse();
@@ -2526,7 +2544,7 @@ function _SFX()
         break;
        }; 
 
-    // PlaysFLI file, loop
+    // PlayMP4 file, loop
    case 10: {
         var SaveMouse = activeMouse;
         if (SaveMouse) hideMouse();
@@ -2546,9 +2564,9 @@ function _SFX()
 /*--------------------------------------------------------------------------------------*/
 function _DESC()
 {
-  if (Parameter1 = LOC_HERE) Parameter1 = flags.getFlag(FPLAYER);
-  writeText(getMessage(DDB.header.locationPos, Parameter1)); 
+  if (Parameter1 == LOC_HERE) Parameter1 = flags.getFlag(FPLAYER);
   done = true;
+  writeText(getMessage(DDB.header.locationPos, Parameter1)); 
 }
 
 /*--------------------------------------------------------------------------------------*/
@@ -3156,7 +3174,7 @@ function _SWAP()
 /*--------------------------------------------------------------------------------------*/
 function _PLACE()
 {
- if (Parameter2 = LOC_HERE) Parameter2 = flags.getFlag(FPLAYER);
+ if (Parameter2 == LOC_HERE) Parameter2 = flags.getFlag(FPLAYER);
  if (objects.getObjectLocation(Parameter1) == LOC_CARRIED) flags.setFlag(FCARRIED, flags.getFlag(FCARRIED) - 1);
  objects.setObjectLocation(Parameter1, Parameter2);
  if (objects.getObjectLocation(Parameter1) == LOC_CARRIED) flags.setFlag(FCARRIED, flags.getFlag(FCARRIED) +1);
@@ -3226,7 +3244,7 @@ function _SYSMESS()
 /*--------------------------------------------------------------------------------------*/
 function _ISAT()
 {
-    if (Parameter2 = LOC_HERE) Parameter2 = flags.getFlag(FPLAYER);
+    if (Parameter2 == LOC_HERE) Parameter2 = flags.getFlag(FPLAYER);
     condactResult = objects.getObjectLocation(Parameter1) == Parameter2;
 }
 
@@ -3260,8 +3278,8 @@ function _HASNAT()
 /*--------------------------------------------------------------------------------------*/
 function _LISTOBJ()
 {
-    listObjects(flags.getFlag(FPLAYER), false);
     done = true;
+    writeText(listObjects(flags.getFlag(FPLAYER), false));  // false = not LISTAT
 }
 
 /*--------------------------------------------------------------------------------------*/
@@ -3350,7 +3368,7 @@ function _ADJECT2()
 /*--------------------------------------------------------------------------------------*/
 function _ADD()
 {
- if (flags.getFlag(Parameter1) -  flags.getFlag(Parameter2) > MAX_FLAG_VALUE) flags.setFlag(Parameter2, MAX_FLAG_VALUE);
+ if (flags.getFlag(Parameter1) +  flags.getFlag(Parameter2) > MAX_FLAG_VALUE) flags.setFlag(Parameter2, MAX_FLAG_VALUE);
                 else flags.setFlag(Parameter2, flags.getFlag(Parameter1) + flags.getFlag(Parameter2));
  done = true;
 }
@@ -3384,8 +3402,8 @@ function _PARSE()
 function _LISTAT()
 {
     if (Parameter1 == LOC_HERE) Parameter1 = flags.getFlag(FPLAYER);
-    listObjects(Parameter1, true); 
     done = true;
+    writeText(listObjects(Parameter1, true));  // true = LISTAT
 }
 
 /*--------------------------------------------------------------------------------------*/
@@ -3515,7 +3533,7 @@ function _DOALL()
     _EXIT;
     }
  
-    if (Parameter1 = LOC_HERE) Parameter1 = flags.getFlag(FPLAYER);
+    if (Parameter1 == LOC_HERE) Parameter1 = flags.getFlag(FPLAYER);
     var i = -1;
     do 
     {
@@ -3605,7 +3623,7 @@ done = true;
 /*--------------------------------------------------------------------------------------*/
 function _ISNOTAT()
 {
-    if (Parameter2 = LOC_HERE) Parameter2 = flags.getFlag(FPLAYER);
+    if (Parameter2 == LOC_HERE) Parameter2 = flags.getFlag(FPLAYER);
     condactResult = objects.getObjectLocation(Parameter1) != Parameter2;
 }
 
@@ -3619,7 +3637,7 @@ function _WEIGH()
 /*--------------------------------------------------------------------------------------*/
 function _PUTIN() 
 {
-    if (Parameter1 = LOC_HERE) Parameter1 = flags.getFlag(FPLAYER);
+    if (Parameter1 == LOC_HERE) Parameter1 = flags.getFlag(FPLAYER);
     objects.setReferencedObject(Parameter1);
     var ObjectLocation =objects.getObjectLocation(Parameter1);
     if (ObjectLocation == LOC_WORN) 
@@ -3666,7 +3684,7 @@ function _NEWTEXT()
 /*--------------------------------------------------------------------------------------*/
 function _TAKEOUT() 
 {
-    if (Parameter1 = LOC_HERE) Parameter1 = flags.getFlag(FPLAYER);
+    if (Parameter1 == LOC_HERE) Parameter1 = flags.getFlag(FPLAYER);
     objects.setReferencedObject(Parameter1);
     var ObjectLocation =objects.getObjectLocation(Parameter1);
     if ((ObjectLocation == LOC_WORN) || (ObjectLocation==LOC_CARRIED)) 
@@ -3755,7 +3773,7 @@ function _WEIGHT()
 /*--------------------------------------------------------------------------------------*/
 function _RANDOM()
 {
- flags.setFlag(Parameter1, Math.floor(Math.random()*101));
+ flags.setFlag(Parameter1, Math.floor(Math.random()*100) +1);
  done = true;
 }
 
@@ -3801,7 +3819,7 @@ function _PRINTAT()
 function _WHATO() 
 {
     var currentNoun = flags.getFlag(FNOUN);
-    var currentAdjective = flags.getFlag(FVERB);
+    var currentAdjective = flags.getFlag(FADJECT);
 
     var objno = objects.getObjectByVocabularyAtLocation(currentNoun, currentAdjective, LOC_CARRIED);
     if (objno != NO_OBJECT) objects.setReferencedObject(objno);
@@ -3854,7 +3872,7 @@ function _NOTDONE()
 /*--------------------------------------------------------------------------------------*/
 function _AUTOP() 
 {
-    if (Parameter1 = LOC_HERE) Parameter1 = flags.getFlag(FPLAYER);
+    if (Parameter1 == LOC_HERE) Parameter1 = flags.getFlag(FPLAYER);
     Parameter2 = Parameter1; //To use it with PUTIN
     var Noun = flags.getFlag(FNOUN);
     var Adject = flags.getFlag(FADJECT);
@@ -3890,7 +3908,7 @@ function _AUTOP()
 /*--------------------------------------------------------------------------------------*/
 function _AUTOT() 
 {
-    if (Parameter1 = LOC_HERE) Parameter1 = flags.getFlag(FPLAYER);
+    if (Parameter1 == LOC_HERE) Parameter1 = flags.getFlag(FPLAYER);
     Parameter2 = Parameter1; //To use it with TAKEOUT
     var Noun = flags.getFlag(FNOUN);
     var Adject = flags.getFlag(FADJECT);
