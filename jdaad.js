@@ -1159,6 +1159,16 @@ function initializeParser()
 };
 
 
+function showAnykeyHint()
+{
+    document.body.classList.add("waiting-key");
+}
+
+function hideAnykeyHint()
+{
+    document.body.classList.remove("waiting-key");
+}
+
 function getKeyCodeFromKey(key)
 {
     if (key.length == 1) return key.charCodeAt(0);
@@ -1686,6 +1696,7 @@ function clickHandler(e)
         e.stopPropagation();
         if (!inMORE) DDB.condactPTR++; // Point to next condact
         inANYKEY = inMORE = false;
+        hideAnykeyHint();
         for(var i=0;i<NUM_WINDOWS;i++) windows.windows[i].lastPauseLine = 0;
         run(true); // skipToRunCondact = true
     }
@@ -1742,6 +1753,7 @@ function keydownHandler(e)
                 }
 
                 inANYKEY = inMORE = false;
+                hideAnykeyHint();
                 
                 for(var i=0;i<NUM_WINDOWS;i++) windows.windows[i].lastPauseLine = 0;
                 run(true); // skipToRunCondact = true
@@ -1786,6 +1798,7 @@ function inputTimeoutHandler()
         // we don't check the flag to know if timeout can happen in ANYKEY because the timeout handler is only started in ANYKEY if the bit flag is set
         if (!inMORE) DDB.condactPTR++; // Point to next condact
         inANYKEY = inMORE = false;
+        hideAnykeyHint();
         for(var i=0;i<NUM_WINDOWS;i++) windows.windows[i].lastPauseLine = 0;
         run(true); // skipToRunCondact = true
     }
@@ -2083,6 +2096,7 @@ function writeText(aText)
         writeTextBuffer = aText.substring(sharpKpos + 1);
         aText = aText.substring(0, sharpKpos);
         inANYKEY = inMORE = true;  // this will make execution stop after whatever condact has called this writeText
+        showAnykeyHint();
         writeTextDone = done;
         if (flags.getFlag(FTIMEOUT)) // Start timeout
         if (flags.getFlag(FTIMEOUT_CONTROL) & 0x02) // If timeout is active in More.. (bit 1 set)
@@ -2099,6 +2113,7 @@ function writeText(aText)
         writeTextBuffer = aText.substring(lastFittingChar);
         aText = aText.substring(0, lastFittingChar );
         inANYKEY = inMORE = true;  // this will make execution stop after whatever condact has called this writeText
+        showAnykeyHint();
         writeTextDone = done;
         if (flags.getFlag(FTIMEOUT)) // Start timeout
         if (flags.getFlag(FTIMEOUT_CONTROL) & 0x02) // If timeout is active in More.. (bit 1 set)
@@ -2731,6 +2746,7 @@ function _ANYKEY()
 {
     if ((keyBoardStatus.length == 1) && (keyBoardStatus[0] == 13)) keyBoardStatus = []; // Remove pending CR
     inANYKEY = true;
+    showAnykeyHint();
     if (flags.getFlag(FTIMEOUT)) // Timeout duration != 0
     if ((flags.getFlag(FTIMEOUT_CONTROL) & 4) == 4) // Timeout can happen in ANYKEY
     timeoutID = setTimeout(function() { 
@@ -2742,8 +2758,10 @@ function _ANYKEY()
 /*--------------------------------------------------------------------------------------*/
 function _DPRINT()
 {
-    var Value = flags.getFlag(Parameter1) + 256 * flags.getFlag(Parameter1 + 1);
-    var valstr = Value + '';
+    var Value = 0;
+    // This weird line if using location of object 0 is just to ressemble what happens in old interpreters
+    if (Parameter1==255) Value =  flags.getFlag(Parameter1) + 256 * objects.getObjectLocation(0);
+    else   Value = flags.getFlag(Parameter1) + 256 * flags.getFlag(Parameter1 + 1);    var valstr = Value + '';
     writeText(valstr);
     done = true;
 }
@@ -3015,7 +3033,7 @@ function _REMOVE()
   return;
  }
 
- if (flags.getFlag(FPLAYER) >= flags.getFlag(FOBJECTS_CONVEYABLE)) 
+ if (flags.getFlag(FCARRIED) >= flags.getFlag(FOBJECTS_CONVEYABLE)) 
  {
   Sysmess(SM42); //I can't remove the _. My hands are full.
   newtext();
@@ -3418,7 +3436,7 @@ function _LISTAT()
 /*--------------------------------------------------------------------------------------*/
 function _PROCESS()
 {
-    if (Parameter1 >= DDB.header.numPro) Error(3, 'Process ' + Parameter1 + 'does not exist'); 
+    if (Parameter1 >= DDB.header.numPro) Error(3, 'Process ' + Parameter1 + ' does not exist'); 
     stack.stackPush();
     currentProcess = Parameter1;
     if (NESTED_DOALL_ENABLED) 
@@ -4133,6 +4151,7 @@ function _GETKEY()
     if ((keyBoardStatus.length == 1) && (keyBoardStatus[0] == 13)) keyBoardStatus = []; // Remove pending CR
     inANYKEY = true;
     inGETKEY = true; // GETKEY is just an ANYKEY that breaks only with keyboard (no mouse) and saves key pressed in flags
+    showAnykeyHint();
 }
 
 
