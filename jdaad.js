@@ -622,7 +622,7 @@ class flagClass {
 
     RAMLOADFlags(flagno)
     {
-        for(var i=0;i<flagno;i++) 
+        for(var i=0;i<=flagno;i++)
          this.#theflags[i] = this.#theflagsRAMSAVE[i]
     }
 
